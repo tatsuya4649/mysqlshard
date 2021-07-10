@@ -1,7 +1,6 @@
 import random
 import string
 
-
 class TestNode:
 	def __init__(self,node_count=10,data_count=100,str_len=10):
 		self._node_count = node_count
@@ -80,3 +79,14 @@ class TestNode:
 		for key in nodes_datas.keys():
 			print(f"{key}: {len(nodes_datas[key])}")
 		
+
+if __name__ == "__main__":
+	test = TestNode()
+	print(" ======== test node ========")
+	print(test.nodes)
+	print(" ======== test node count =========")
+	print(test.nodes_count)
+	print(" ======== test data ========")
+	print(test.datas)
+	print(" ======== test data count =========")
+	print(test.datas_count)
