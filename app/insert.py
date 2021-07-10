@@ -1,0 +1,35 @@
+import string
+import random
+import requests
+
+def post_request(url,username,comment):
+	response = requests.post(
+		url,
+		data={"username":username,"comment":comment}
+	)
+	print("request:")
+	print(f"username:{username},comment:{comment}")
+	print("response header:")
+	print(response.headers)
+	print("response content:")
+	print(response.content)
+
+# Generate random comment(0~count)
+def random_comment(count=10):
+	result = ""
+	for _ in range(random.randint(0,count)):
+                result += random.choice(string.ascii_letters + string.digits)
+	return result
+
+# Generate random string
+def random_string(count=10):
+        result = ""
+        for _ in range(count):
+                result += random.choice(string.ascii_letters + string.digits)
+        return result
+
+
+if __name__ == "__main__":
+	_URL="http://172.17.0.1:48080/user"
+	for _ in range(100000):
+		post_request(_URL,random_string(),random_comment(count=100))

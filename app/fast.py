@@ -23,5 +23,6 @@ def post_user(username:str=Form(...),comment:Optional[str]=Form(None)):
 		with conn:
 			db.insert(conn,_TABLE,scheme,data_array)
 		return {"result":"success","username":username,"comment":comment}
-	except:
+	except Exception as e:
+		print(e)
 		return {"result":"failure","username":username,"comment":comment}

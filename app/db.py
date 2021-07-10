@@ -3,6 +3,7 @@ import sys
 import os
 
 def connection():
+	database = os.getenv("NODEDATABASE")
 	node = os.getenv("NODEIP")
 	port = int(os.getenv("NODEPORT"))
 	if node is None or port is None:
@@ -12,6 +13,7 @@ def connection():
 		port=port,
 		user='root',
 		password='mysql',
+		database=database,
 		cursorclass=pymysql.cursors.DictCursor
 	)
 	return conn
@@ -25,4 +27,6 @@ def insert(conn,table,scheme,data_array):
 			cursor.execute(sql)
 			conn.commit()
 	except Exception as e:
-		raise Exception
+		print(e)
+		raise e
+
