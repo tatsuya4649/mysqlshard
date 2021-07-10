@@ -1,9 +1,9 @@
 FROM python:slim
 
 WORKDIR /home
-COPY . .
-COPY ../nodes .
+COPY app .
+COPY ./nodes .
 
 RUN ["pip","install","-r","requirements.txt"]
 
-ENTRYPOINT ["python3","main.py"]
+ENTRYPOINT ["./start.sh"]
