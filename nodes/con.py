@@ -1,6 +1,7 @@
 import hashlib
 import sys
 import test
+import copy
 
 def consistent_hasing(nodes,data):
 	nodes_id = dict()
@@ -27,7 +28,7 @@ def distributed(test,nodes_dict):
 	print(f"Standard Deviation: {std}")
 
 if __name__ == "__main__":
-	test = test.TestNode(node_count=100,data_count=10000,str_len=10)
+	test = test.TestNode(node_count=100,data_count=10000,str_len=2)
 	nodes_dict = dict()
 	for node in test.nodes:
 		nodes_dict[node] = list()
@@ -38,9 +39,10 @@ if __name__ == "__main__":
 		nodes_dict[node].append(data)
 	for node in nodes_dict.keys():
 		print(f"{node} => {len(nodes_dict[node])}")
+	cons_nodes_dict = copy.deepcopy(nodes_dict)
 	distributed(test,nodes_dict)
 	print("=========== add node ===========")
-	test.append(count=100)
+	test.append(count=1)
 	print(f"Nodes Count: {test.nodes_count}")
 	nodes_dict = dict()
 	for node in test.nodes:
@@ -50,9 +52,10 @@ if __name__ == "__main__":
 		nodes_dict[node].append(data)
 	for node in nodes_dict.keys():
 		print(f"{node} => {len(nodes_dict[node])}")
+	add_nodes_dict = copy.deepcopy(nodes_dict)
 	distributed(test,nodes_dict)
 	print("=========== delete node ===========")
-	test.remove(count=100)
+	test.remove(count=1)
 	print(f"Nodes Count: {test.nodes_count}")
 	nodes_dict = dict()
 	for node in test.nodes:
@@ -62,4 +65,21 @@ if __name__ == "__main__":
 		nodes_dict[node].append(data)
 	for node in nodes_dict.keys():
 		print(f"{node} => {len(nodes_dict[node])}")
+	del_nodes_dict = copy.deepcopy(nodes_dict)
 	distributed(test,nodes_dict)
+
+	print("Changed: consistent vs add")
+	count = 0
+	for key in cons_nodes_dict.keys():
+		if set(cons_nodes_dict[key]) != set(add_nodes_dict[key]):
+			count += 1
+			print(f"send to add: {set(cons_nodes_dict[key]) ^ set(add_nodes_dict[key])}")
+	print(f"Changed count => {count}")
+
+	print("Changed: add vs del")
+	count = 0
+	for key in del_nodes_dict.keys():
+		if set(del_nodes_dict[key]) != set(add_nodes_dict[key]):
+			count += 1
+			print(f"send to anynode: {set(del_nodes_dict[key]) ^ set(add_nodes_dict[key])}")
+	print(f"Changed count => {count}")
