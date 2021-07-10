@@ -1,4 +1,4 @@
 
 # MySQL Sharding System
 
-![ Sharding ](images/shrd.png)
+![ Sharding ](images/shard.png)
