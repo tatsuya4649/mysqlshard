@@ -59,3 +59,15 @@ required:
 4. The node with the smallest hash value.
 
 ![ cons_group.png ](../images/cons_group.png)
+
+
+### Add Node
+
+![ cons_add.png ](../images/cons_add.png)
+
+1. Caluculate new node hash.
+2. Add ring.
+3. Get new node data from next node.
+4. Add step.3 data to new node.
+5. If you hava application with database,update Database IP address of Application.
+6. Delete data from node whose data was stolen of step.3.
