@@ -10,6 +10,8 @@ def virtual_hash(nodes_id,node,virtual):
 	for i in range(1,virtual+1):
 		nodes_id[hash(f"{node}_{i}".encode('utf-8'))] = node
 
+# Receive IP Address of Nodes,Data(non Hash)
+# Return IP Address to be saved
 def consistent_hasing(nodes,data,virtual=100):
 	nodes_id = dict()
 	for node in nodes:
