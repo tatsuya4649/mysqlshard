@@ -30,3 +30,19 @@ def insert(conn,table,scheme,data_array):
 		print(e)
 		raise e
 
+def select_username(conn,table,username):
+	try:
+		with conn.cursor() as cursor:
+			sql = f"SELECT * FROM {table} WHERE username=\"{username}\""
+			print(sql)
+			cursor.execute(sql)
+
+			results = cursor.fetchall()
+			if (len(results) != 1):
+				raise Exception
+			for r in results:
+				return r
+	except Exception as e:
+		print(e)
+		raise e
+

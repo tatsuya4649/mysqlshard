@@ -10,6 +10,18 @@ _TABLE="user"
 def get():
 	return {"hello":"world"}
 
+@app.get("/user/{username}")
+def get_user(username:str):
+	conn = db.connection()
+	try:
+		with conn:
+			user=db.select_username(conn,"user",username)
+		return {"result":"success","user":user}
+	except Exception as e:
+		print(e)
+		return {"result":"failure"}
+
+
 @app.post("/user")
 def post_user(username:str=Form(...),comment:Optional[str]=Form(None)):
 	if comment is None:
