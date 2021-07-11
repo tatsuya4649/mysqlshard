@@ -1,0 +1,11 @@
+#!/bin/bash
+
+make clean
+make
+NODE2IP=$(docker network inspect node2 | jq -r ".[].IPAM.Config[].Gateway")
+
+echo "Node2 IP Address: $NODE2IP"
+YAMLFILE="./ip.yaml"
+cat $YAMLFILE
+
+python add_node.py $NODE2IP $YAMLFILE
