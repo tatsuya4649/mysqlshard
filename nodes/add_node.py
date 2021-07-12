@@ -4,10 +4,11 @@ import re
 import sys
 import copy
 import pymysql
+import columns
 from algo import con
 
 class AddNode:
-	def __init__(self,ip,hash_column,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False):
+	def __init__(self,ip,hash_column,database,table,scheme,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False):
 		if not self.ip_check(ip):
 			print(f"not IP Address {args.ip}",file=sys.stderr)
 			raise Exception
@@ -62,7 +63,7 @@ class AddNode:
 		self._insert_ip = set()
 		self._delete_ip = set()
 
-		self._ip_querys = self._get_steal_query()
+		self._ip_query = self._get_steal_query()
 
 	@property
 	def exists_iphashs(self):
@@ -180,10 +181,16 @@ class AddNode:
 		return False
 
 	def _debug_red(self,str):
+		if str is None:
+			return None
 		return '\033[31m' + str + '\033[0m'
 	def _debug_blue(self,str):
+		if str is None:
+			return None
 		return '\033[34m' + str + '\033[0m'
 	def _debug_green(self,str):
+		if str is None:
+			return None
 		return '\033[32m' + str + '\033[0m'
 
 	def _debug_steal_query(self,hdict):
@@ -271,12 +278,18 @@ class AddNode:
 				res_dict[smallest_ip] = list()
 			more = ""
 			if biggest_hash is not None:
-				more = f" {self._hash_column} > {biggest_hash} "
-			less = f" {smallest_hash} > {self._hash_column} "
+				more = f"{self._hash_column} > \"{biggest_hash}\""
+			less = f"\"{smallest_hash}\" > {self._hash_column}"
 			query = f" {more} AND {less} "
 			res_dict[smallest_ip].append(query)
 			if self._DEBUG:
-				print(f"from {self._debug_red(biggest_hash)} to {self._debug_red(smallest_hash)}")
+				from_str = ""
+				to_str = ""
+				if biggest_hash is not None:
+					from_str = f"from {self._debug_red(biggest_hash)} "
+				if smallest_hash is not None:
+					to_str = f" to {self._debug_red(smallest_hash)}"
+				print(f"{from_str}{to_str}")
 		return rem_lists,res_dict
 
 	# Get dict (key IP Address,value Query)
@@ -344,42 +357,47 @@ class AddNode:
 
 	@property
 	def steal_ip(self):
-		return self._steal_ip
+		return list(self._ip_query.keys())
 	# Steal Data From Next
 	def steal_data(
 		self,
 		database,
 		table,
-		hashcolmn,
 		port=3306,
 		user='root',
 		password='mysql',
 	):
-		# Steal Next Host
-		host = self.next_ip
-		self._conn = pymysql.connect(
-			host=host,
-			port=port,
-			user=user,
-			password=password,
-			database=database,
-			cursor=pymysql.cursors.DictCursor
-		)
-		try:
-			with self._conn.cursor() as cursor:
-				sql = f"SELECT * FROM {table} WHERE {hashcolmn} > {self.move_data_hashid_small} AND {hashcolumn} <= {self.move_data_hashid_big}"
-				print(f"{sql}")
-				cursor.execute(sql)
-				results = cursor.fetchall()
-				self._steal_data = results
-		except Exception as e:
-			self._steal_data = None
-			pass
-		finally:
-			self._conn = None
+		for ip in self.steal_ip:
+			host = ip
+			query = self._ip_query[ip]
+			print("----------------------------------------")
+			print(f"Select: From Host \"{host}\", Port \"{port}\",Database \"{database}\", Table \"{table}\", Execute Query \"{query}\"")
+			# Steal Next Host
+			host = ip
+			self._conn = pymysql.connect(
+				host=host,
+				port=port,
+				user=user,
+				password=password,
+				database=database,
+				cursorclass=pymysql.cursors.DictCursor
+			)
+			try:
+				with self._conn.cursor() as cursor:
+					sql = f"SELECT * FROM {table} WHERE {self._ip_query[ip]}"
+					print(f"{sql}")
+					cursor.execute(sql)
+					results = cursor.fetchall()
+					self._steal_data = results
+			except Exception as e:
+				self._steal_data = None
+				pass
+			finally:
+				self._conn = None
+		return self._steal_data
 	@property
 	def delete_ip(self):
-		return self._steal_ip
+		return list(self._ip_query.keys())
 	# Delete Steal Data
 	def delete_data(
 		self,
@@ -412,9 +430,6 @@ class AddNode:
 			pass
 		finally:
 			self._conn = None
-	@property
-	def steal_query_ip(self):
-		return self._steal_query
 
 	@property
 	def insert_ip(self):
@@ -422,9 +437,6 @@ class AddNode:
 	# Insert New Data
 	def insert_data(
 		self,
-		database,
-		table,
-		scheme,
 		port=3306,
 		user='root',
 		password='mysql',
@@ -460,24 +472,11 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	addnode = AddNode(args.ip,"hash_username",args.yaml_path,_DEBUG=True)
-	print("-----add")
-	print(addnode.add_ip)
-	print(addnode.add_hash)
-	print(addnode.add_index)
-	print("-----prev")
-	print(addnode.pre_ip)
-	print(addnode.pre_hash)
-	print(addnode.pre_index)
-	print("-----next")
-	print(addnode.next_ip)
-	print(addnode.next_hash)
-	print(addnode.next_index)
-	print("-----move data hash")
-	print(f"{addnode.move_data_hashid_small}~{addnode.move_data_hashid_big}")
+	addnode = AddNode(args.ip,"hash_username","sharding","user",args.yaml_path,_DEBUG=True)
 
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")
 	print(f"insert IP: {addnode.insert_ip}")
 	print(f"add IP: {addnode.add_ip}")
 
+	steal_date = addnode.steal_data("sharding","user",13306)
