@@ -7,7 +7,7 @@ import pymysql
 from algo import con
 
 class AddNode:
-	def __init__(self,ip,yaml_path="ip.yaml",virtual_count=100):
+	def __init__(self,ip,hash_column,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False):
 		if not self.ip_check(ip):
 			print(f"not IP Address {args.ip}",file=sys.stderr)
 			raise Exception
@@ -56,6 +56,16 @@ class AddNode:
 		self._conn = None
 		self._steal_data = None
 		self._virtual_node(virtual_count)
+		self._hash_column = hash_column
+		self._DEBUG = _DEBUG
+		self._steal_ip = set()
+		self._steal_query = dict()
+		self._insert_ip = set()
+		self._delete_ip = set()
+
+	@property
+	def exists_iphashs(self):
+		return self._exists_iphashs
 
 	@classmethod	
 	def ip_check(self,ip):
@@ -156,9 +166,274 @@ class AddNode:
 	def move_data_hashid_big(self):
 		return self.add_hash
 
+	"""
+		add_virtual => Added virtual node dict("ip","hashs")
+		virtual_index => Index dict("ip",index) for getting the index with the smallest hash value greater than the hash value of add_virtual
+		virtualb_index => Index dict("ip",index) for getting the index with the biggest hash value smaller than the hash value of add_virtual
+		nonaddvirs => virtuals excluding add_virtual
+	"""
+	def _check_change(self,booldict):
+		for key in booldict.keys():
+			if booldict[key]:
+				return True
+		return False
+
+	def _debug_red(self,str):
+		return '\033[31m' + str + '\033[0m'
+	def _debug_blue(self,str):
+		return '\033[34m' + str + '\033[0m'
+	def _debug_green(self,str):
+		return '\033[32m' + str + '\033[0m'
+
+	def _debug_steal_query(self,hdict):
+		print(f"{self._debug_red('========================== DEBUG =========================')}")
+		print(f"biggest change: {hdict['bchange']}")
+		print(f"smallest change: {hdict['schange']}")
+		addv = hdict["add"]
+		for i in range(len(addv["hashs"])):
+			if addv["hashs"][i] == hdict["hash"]:
+				print(f"{self._debug_red(addv['hashs'][i])}",end=",")
+			else:
+				print(f"{addv['hashs'][i]}",end=",")
+		print("")
+		if "bindex" in hdict.keys():
+			print(f"virtualb index => {self._debug_blue(str(hdict['bindex']))}")
+			print(f"{self._debug_blue(hdict['vir']['hashs'][hdict['bindex']])}")
+		if "index" in hdict.keys():
+			print(f"virtual index => {self._debug_green(str(hdict['index']))}")
+			print(f"{self._debug_green(hdict['vir']['hashs'][hdict['index']])}")
+		print(f"{self._debug_red('==========================================================')}")
+	def _hash_smallest(self,hashs,smallest,threshold):
+		results = list()
+		for h in hashs:
+			if smallest is None:
+				if threshold < h:
+					results.append(h)
+			else:
+				if h < smallest and threshold < h:
+					results.append(h)
+		if len(results) == 0:
+			return None
+		else:
+			return min(results)
+	def _hash_biggest(self,hashs,biggest,threshold):
+		results = list()
+		for h in hashs:
+			if biggest is None:
+				if threshold > h:
+					results.append(h)
+			else:
+				if h > biggest and threshold > h:
+					results.append(h)
+		if len(results) == 0:
+			return None
+		else:
+			return max(results)
+
+	def virtualhash(self,add_virtual,nonaddvirs):
+		rem_lists = list()
+		# res_dict["ip"],res_dict["query"]
+		res_dict = dict()
+		for j in range(len(add_virtual["hashs"])):
+			# now hash value
+			addhash = add_virtual["hashs"][j]
+			# if last hash in added virtual
+			if j+1 == len(add_virtual["hashs"]):
+				smallest_hash = None
+			else:
+				smallest_hash = add_virtual["hashs"][j+1]
+			if j == 0:
+				biggest_hash = None
+			else:
+				biggest_hash = add_virtual["hashs"][j-1]
+			# have smallest ip larger than hash(added node virtual hash)
+			smallest_ip = None
+			# have biggest ip smaller than hash(added node virtual hash)
+			biggest_ip = None
+
+			# loop of non adding node
+			for nonadd in nonaddvirs:
+				res = self._hash_smallest(nonadd["hashs"],smallest_hash,addhash)
+				if res is not None:
+					if smallest_hash is None or smallest_hash > res:
+						smallest_hash = res
+						smallest_ip = nonadd["ip"]
+				res = self._hash_biggest(nonadd["hashs"],biggest_hash,addhash)
+				if res is not None:
+					if biggest_hash is None or res > biggest_hash:
+						biggest_hash = res
+						biggest_ip = nonadd["ip"]
+			if smallest_ip is None or smallest_ip == self.add_ip:
+				rem_lists.append(j)
+				continue
+			if smallest_ip not in res_dict.keys():
+				res_dict[smallest_ip] = list()
+			more = ""
+			if biggest_hash is not None:
+				more = f" {self._hash_column} > {biggest_hash} "
+			less = f" {smallest_hash} > {self._hash_column} "
+			query = f" {more} AND {less} "
+			res_dict[smallest_ip].append(query)
+			if self._DEBUG:
+				print(f"from {self._debug_red(biggest_hash)} to {self._debug_red(smallest_hash)}")
+		return rem_lists,res_dict
+
+	def steal_query(self):
+		virtuals = addnode._virtual_data()
+		
+		add_virtual = None
+		
+		# initial index => 0
+		virtual_index = dict()
+		virtualb_index = dict()
+		for virtual in virtuals:
+			virtual_index[virtual["ip"]] = 0
+			virtualb_index[virtual["ip"]] = 0
+		# delete addnode index
+		for virtual in virtuals:
+			if virtual["ip"] == addnode.add_ip:
+				add_virtual = virtual
+		del virtual_index[addnode.add_ip]
+		del virtualb_index[addnode.add_ip]
+
+		nonaddvirs = copy.deepcopy(virtuals)
+		for j in range(len(nonaddvirs)):
+			if nonaddvirs[j]["ip"] == addnode.add_ip:
+				nonaddvirs.pop(j)
+				break
+
+		# raise Exception
+		if add_virtual is None:
+			raise ValueError("not found added node data from addnode._virtual_data")
+		if len(virtual_index.keys()) == 0:
+			raise ValueError("virtual_index must have one or more elements")
+		if len(virtualb_index.keys()) == 0:
+			raise ValueError("virtualb_index must have one or more elements")
+		if len(nonaddvirs) == 0:
+			raise ValueError("nonaddvirs must have one or more elements")
+		if self._hash_column is None:
+			raise ValueError("not found hash_column used in query")
+
+		# query count
+		scount = 0
+		bcount = 0
+		# total query
+		query = ""
+		hashcolumn = self._hash_column
+		# per add_virtual hash value
+		rem_lists = self.virtualhash(add_virtual,nonaddvirs)
+		while len(rem_lists) != 0:
+			rem_lists,query_dict = self.virtualhash(add_virtual,nonaddvirs)
+			rem_lists.reverse()
+			for i in rem_lists:
+				add_virtual["hashs"].pop(i)
+		if not 'query_dict' in locals():
+			raise AttributeError("not found query_dict")
+
+		ip_query = dict()
+		for ip in query_dict.keys():
+			query = ""
+			for i in range(len(query_dict[ip])):
+				query += query_dict[ip][i]
+				if i < len(query_dict[ip])-1:
+					query += "OR"
+			ip_query[ip] = query
+		print(ip_query)
+
+#			continue
+#			# until no change the two check_value
+#			change_biggest = dict()
+#			change_smallest = dict()
+#			for virtual in nonaddvirs:
+#				change_biggest[virtual["ip"]] = True
+#				change_smallest[virtual["ip"]] = True
+#			while self._check_change(change_biggest) or self._check_change(change_smallest):
+#				for virtual in nonaddvirs:
+#					ip = virtual["ip"]
+#					"""
+#						check:
+#						1. out of index
+#						2. hash is not None
+#						3. hash value compare
+#						4. change value
+#					"""
+#					if len(virtual["hashs"]) > virtualb_index[ip] and (biggest_hash is not None) and addhash > virtual["hashs"][virtualb_index[ip]] and change_biggest[ip]:
+#						if biggest_hash < virtual["hashs"][virtualb_index[ip]]:
+#							biggest_hash = virtual["hashs"][virtualb_index[ip]]
+#							biggest_ip = ip
+#						else:
+#							if len(virtual["hashs"]) > virtualb_index[ip]:
+#								virtualb_index[ip] += 1
+#							change_biggest[ip] = False
+#					else:
+#						if len(virtual["hashs"]) > virtualb_index[ip]:
+#							virtualb_index[ip] += 1
+#						change_biggest[ip] = False
+#
+#					if len(virtual["hashs"]) > virtual_index[ip] and (smallest_hash is not None)  and addhash < virtual["hashs"][virtual_index[ip]] and change_smallest[ip]:
+#						if smallest_hash > virtual["hashs"][virtual_index[ip]]:
+#							smallest_hash = virtual["hashs"][virtual_index[ip]]
+#							smallest_ip = ip
+#						else:
+#							if len(virtual["hashs"]) > virtual_index[ip]:
+#								virtual_index[ip]+=1
+#							change_smallest[ip] = False
+#					else:
+#						if len(virtual["hashs"]) > virtual_index[ip]:
+#							virtual_index[ip]+=1
+#						change_smallest[ip] = False
+#
+#					if (change_biggest[ip] or change_smallest[ip]) and self._DEBUG:
+#						hashd = dict()
+#						hashd["add"] = add_virtual
+#						hashd["hash"] = addhash
+#						hashd["vir"] = virtual
+#						hashd["bchange"] = change_biggest[ip]
+#						hashd["schange"] = change_smallest[ip]
+#						if len(virtual["hashs"]) > virtualb_index[ip]:
+#							hashd["bindex"] = virtualb_index[ip]
+#						if len(virtual["hashs"]) > virtual_index[ip]:
+#							hashd["index"] = virtual_index[ip]
+#						self._debug_steal_query(hashd)
+#			bflag = False
+#			if smallest_hash is not None and biggest_hash is not None and biggest_hash != add_virtual["hashs"][j-1]:
+#				bcount += 1	
+#				if self._DEBUG:
+#					print("-----------")
+#					print(f"{biggest_hash}")
+#					print(f"{hash}")
+#					print(f"{smallest_hash}")
+#				query += f" {biggest_hash} < {hashcolumn} AND "
+#				self._steal_ip.add(smallest_ip)
+#				if smallest_ip not in self._steal_query.keys():
+#					self._steal_query[smallest_ip] = list()
+#				bflag = True
+#			if smallest_hash is not None and smallest_hash != add_virtual["hashs"][j+1]:
+#				scount += 1
+#				if self._DEBUG:
+#					print("-----------")
+#					print(f"{biggest_hash}")
+#					print(f"{addhash}")
+#					print(f"{smallest_hash}")
+#				query += f" {addhash} >= {hashcolumn} OR"
+#				self._steal_ip.add(smallest_ip)
+#				if smallest_ip not in self._steal_query.keys():
+#					self._steal_query[smallest_ip] = list()
+#			else:
+#				if not bflag:
+#					query = query.rstrip("AND")
+#			self._steal_query[smallest_ip].append(query)
+#			query = ""
+#		query = query.rstrip("OR")
+#		if self._DEBUG:
+#			#pass
+#			print(query)
+#			print(scount)
+#			print(bcount)
+
 	@property
 	def steal_ip(self):
-		return self.next_ip
+		return self._steal_ip
 	# Steal Data From Next
 	def steal_data(
 		self,
@@ -193,7 +468,7 @@ class AddNode:
 			self._conn = None
 	@property
 	def delete_ip(self):
-		return self.next_ip
+		return self._steal_ip
 	# Delete Steal Data
 	def delete_data(
 		self,
@@ -226,6 +501,9 @@ class AddNode:
 			pass
 		finally:
 			self._conn = None
+	@property
+	def steal_query_ip(self):
+		return self._steal_query
 
 	@property
 	def insert_ip(self):
@@ -271,7 +549,7 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	addnode = AddNode(args.ip,args.yaml_path)
+	addnode = AddNode(args.ip,"hash_username",args.yaml_path,_DEBUG=True)
 	print("-----add")
 	print(addnode.add_ip)
 	print(addnode.add_hash)
@@ -286,53 +564,20 @@ if __name__ == "__main__":
 	print(addnode.next_index)
 	print("-----move data hash")
 	print(f"{addnode.move_data_hashid_small}~{addnode.move_data_hashid_big}")
+
+	addnode.steal_query
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")
 	print(f"insert IP: {addnode.insert_ip}")
 	print(f"add IP: {addnode.add_ip}")
-	virtuals = addnode._virtual_data()
-	steels = list()
-	
-	add_virtual = None
-	virtual_index = dict()
-	for virtual in virtuals:
-		virtual_index[virtual["ip"]] = 0
-	for virtual in virtuals:
-		if virtual["ip"] == addnode.add_ip:
-			add_virtual = virtual
-	del virtual_index[addnode.add_ip]
 
-	nonaddvirs = copy.deepcopy(virtuals)
-	for j in range(len(nonaddvirs)):
-		if nonaddvirs[j]["ip"] == addnode.add_ip:
-			nonaddvirs.pop(j)
-			break
-	
-	count = 0
-	query = ""
-	for j in range(len(add_virtual["hashs"])):
-		hash = add_virtual["hashs"][j]
-		if j+1 == len(add_virtual["hashs"]):
-			break
-		else:
-			smallest_hash = add_virtual["hashs"][j+1]
-		smallest_ip = None
-		for virtual in nonaddvirs:
-			ip = virtual["ip"]
-			if hash < virtual["hashs"][virtual_index[ip]]:
-				if smallest_hash > virtual["hashs"][virtual_index[ip]]:
-					smallest_hash = virtual["hashs"][virtual_index[ip]]
-					smallest_ip = ip
-				else:
-					virtual_index[ip]+=1
-			else:
-				virtual_index[ip]+=1
-		if hash != smallest_hash:
-			count += 1
-			print("-----------")
-			print(hash)
-			print(smallest_hash)
-			query += f" {hash} <= {smallest_hash} OR"
-	query = query.rstrip("OR")
-	print(count)
-	print(query)
+	addnode.steal_query()
+#	add_virtual = None
+#	for virtual in addnode._virtual_data():
+#		if virtual["ip"] == addnode.add_ip:
+#			add_virtual = virtual
+#	print(add_virtual)
+#	for j in range(len(add_virtual["hashs"])):
+#		small = 
+#		big = None
+
