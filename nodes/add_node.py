@@ -4,11 +4,16 @@ import re
 import sys
 import copy
 import pymysql
-import columns
+import columns as clms
 from algo import con
 
 class AddNode:
-	def __init__(self,ip,hash_column,database,table,scheme,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False):
+	def __init__(self,ip,hash_column,database,table,columns,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False):
+		if not isinstance(columns,clms.Columns):
+			raise TypeError("column argument's type  must be Columns")
+		self._columns = columns
+		self._database = database
+		self._table = table
 		if not self.ip_check(ip):
 			print(f"not IP Address {args.ip}",file=sys.stderr)
 			raise Exception
@@ -448,19 +453,27 @@ class AddNode:
 			port=port,
 			user=user,
 			password=password,
-			database=database,
-			cursor=pymysql.cursors.DictCursor
+			database=self._database,
+			cursorclass=pymysql.cursors.DictCursor
 		)
+		res_list = list()
 		for insert_data in self._steal_data:
 			try:
 				with self._conn.cursor() as cursor:
-					sql = f"INSERT INTO {scheme} VALUES ({insert_data})"
+					sql = f"INSERT INTO {self._table} {str(self._columns)} VALUES {self._columns.convert(insert_data)}"
+					print(sql)
 					self._conn.begin()
-					curosr.execute(sql)
+					res = cursor.execute(sql)
+					res_list.append(res)
 					self._conn.commit()
 			except Exception as e:
-				pass
+				print(e)
 		self._conn = None
+		return res_list
+
+	@property
+	def columns(self):
+		return self._columns
 
 
 	
@@ -472,11 +485,17 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	addnode = AddNode(args.ip,"hash_username","sharding","user",args.yaml_path,_DEBUG=True)
+	columns = clms.Columns("id","username","hash_username","comment","start")
+	addnode = AddNode(args.ip,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True)
 
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")
 	print(f"insert IP: {addnode.insert_ip}")
 	print(f"add IP: {addnode.add_ip}")
 
-	steal_date = addnode.steal_data("sharding","user",13306)
+	steal_data = addnode.steal_data("sharding","user",13306)
+	print(steal_data)
+	print(addnode.columns)
+	res = addnode.insert_data(port=23306)
+	print(res)
+
