@@ -2,7 +2,7 @@ FROM python:slim
 
 WORKDIR /home
 COPY app .
-COPY ./nodes .
+COPY nodes ./nodes/
 
 RUN ["pip","install","-r","requirements.txt"]
 

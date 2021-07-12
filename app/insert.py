@@ -1,14 +1,16 @@
 import string
 import random
 import requests
+import hashlib
 
 def post_request(url,username,comment):
+	hash_username = hashlib.md5(username.encode("utf-8")).hexdigest()
 	response = requests.post(
 		url,
-		data={"username":username,"comment":comment}
+		data={"username":username,"hash_username": hash_username,"comment":comment}
 	)
 	print("request:")
-	print(f"username:{username},comment:{comment}")
+	print(f"username:{username},hash_username:{hash_username},comment:{comment}")
 	print("response header:")
 	print(response.headers)
 	print("response content:")
