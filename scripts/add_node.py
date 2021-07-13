@@ -6,15 +6,22 @@ import copy
 import pymysql
 import test
 import choice
+import notice
 import columns as clms
 from algo import con
 import time
 
 class MySQLAddNode(test.MySQLConsistency):
-	def __init__(self,ip,hash_column,database,table,columns,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False):
+	def __init__(self,ip,hash_column,database,table,columns,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False,funcpath=None,notice_args=[],notice_kwargs={}):
 		super().__init__(ip,database,table)
 		if not isinstance(columns,clms.Columns):
 			raise TypeError("column argument's type  must be Columns")
+		if funcpath is not None:
+			self._notice = notice.Notice(funcpath,*notice_args,**notice_kwargs)
+		else:
+			self._notice = None
+		self._notice_args = notice_args
+		self._notice_kwargs = notice_kwargs
 		self._columns = columns
 		self._database = database
 		self._table = table
@@ -60,7 +67,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		else:
 			self._next_dict = new_iphashs[self._add_node_index+1]
 			self._next_ip = self._next_dict["ip"]
-			self._next_hash = self_next_dict["hash"]
+			self._next_hash = self._next_dict["hash"]
 			print(f"Next IP => {self._next_ip}")
 			print(f"Next Hash => {self._next_hash}") 
 		self._conn = None
@@ -640,7 +647,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		return self._columns
 
 	# Steal,Insert,Delete
-	def sid(self,steal_port=3306,insert_port=3306,update=True):
+	def sid(self,steal_port=3306,insert_port=3306,script=True,update=True):
 		steal_data = addnode.steal_data("sharding","user",steal_port)
 		print("============== Steal Dataset Counter =================")
 		for key in addnode._steal_dataset.keys():
@@ -655,8 +662,15 @@ class MySQLAddNode(test.MySQLConsistency):
 		print(f"Success: Steal from {self.steal_ip}")
 		print(f"Success: Insert into {self.insert_ip}")
 		print(f"Success: Delete from {self.steal_ip}")
+		if script:
+			# Notification script for increment node
+			if self._notice is not None:
+				self._notice()
 		if update:
 			self._update_yaml()
+	def anotice(self):
+		if self._notice is not None:
+			self._notice()
 
 	def _update_yaml(self):
 		addnode_dict = dict()
@@ -675,7 +689,7 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 
 	columns = clms.Columns("id","username","hash_username","comment","start")
-	addnode = MySQLAddNode(args.ip,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True)
+	addnode = MySQLAddNode(args.ip,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"])
 
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")
@@ -683,27 +697,5 @@ if __name__ == "__main__":
 	print(f"add IP: {addnode.add_ip}")
 
 #	addnode.sid(steal_port=13306,insert_port=23306)
-	addnode.update_yaml()
-
-#	steal_data = addnode.steal_data("sharding","user",13306)
-#	print("============== Steal Dataset Counter =================")
-#	for key in addnode._steal_dataset.keys():
-#		print(f"{key} => {len(addnode._steal_dataset[key])}")
-#		
-#	res = addnode.insert_data(port=23306)
-#	print(addnode.insert_len)
-#	try:
-#		addnode.contest_insert()
-#	except test.ConsistencyInsertError as e:
-#		if choice.insert_retry(addnode.insert_ip,e.err_count):
-#			pass
-#	except test.ConsistencyUnmatchError as e:
-#		if choice.insert_redo():
-#			addnode.insert_redo()
-#	else:
-#		if choice.delete_data(addnode.delete_ip):
-#			res = addnode.delete_data(port=13306)
-#	print(addnode.error_insert)
-#	res = addnode.delete_data(port=13306)
-#	print(res)
+	addnode.anotice()
 
