@@ -17,7 +17,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		if not isinstance(columns,clms.Columns):
 			raise TypeError("column argument's type  must be Columns")
 		if funcpath is not None:
-			self._notice = notice.Notice(funcpath,*notice_args,**notice_kwargs)
+			self._notice = notice.Notice(funcpath)
 		else:
 			self._notice = None
 		self._notice_args = notice_args
@@ -665,12 +665,12 @@ class MySQLAddNode(test.MySQLConsistency):
 		if script:
 			# Notification script for increment node
 			if self._notice is not None:
-				self._notice()
+				self._notice(*self._notice_args,**self._notice_kwargs)
 		if update:
 			self._update_yaml()
 	def anotice(self):
 		if self._notice is not None:
-			self._notice()
+			self._notice(*self._notice_args,**self._notice_kwargs)
 
 	def _update_yaml(self):
 		addnode_dict = dict()
@@ -680,8 +680,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		new_iphashs.append(addnode_dict)
 		parse.update_yaml(self._yaml_path,new_iphashs)
 
-
-if __name__ == "__main__":
+def main():
 	parser = argparse.ArgumentParser(description="Add node from IP Address")
 	parser.add_argument("ip",help="IP Address of Node")
 	parser.add_argument("yaml_path",help="Exists IP Addresses file path")
@@ -698,4 +697,7 @@ if __name__ == "__main__":
 
 #	addnode.sid(steal_port=13306,insert_port=23306)
 	addnode.anotice()
+
+if __name__ == "__main__":
+	main()
 
