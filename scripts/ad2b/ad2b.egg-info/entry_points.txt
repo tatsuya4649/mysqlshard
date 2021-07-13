@@ -1,3 +1,0 @@
-[console_scripts]
-addnode = scripts.add_node:main
-

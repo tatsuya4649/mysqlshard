@@ -12,7 +12,7 @@ from algo import con
 import time
 
 class MySQLAddNode(test.MySQLConsistency):
-	def __init__(self,ip,hash_column,database,table,columns,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False,funcpath=None,notice_args=[],notice_kwargs={}):
+	def __init__(self,ip,port,hash_column,database,table,columns,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False,funcpath=None,notice_args=[],notice_kwargs={}):
 		super().__init__(ip,database,table)
 		if not isinstance(columns,clms.Columns):
 			raise TypeError("column argument's type  must be Columns")
@@ -40,10 +40,15 @@ class MySQLAddNode(test.MySQLConsistency):
 		add_node_hash = con.hash(add_node_ip.encode("utf-8"))
 		self._add_node_dict = dict()
 		self._add_node_dict["ip"] = add_node_ip
+		self._add_node_dict["port"] = port
 		self._add_node_dict["hash"] = add_node_hash
 		new_iphashs = copy.deepcopy(self._exists_iphashs)
 		new_iphashs.append(self._add_node_dict)
 		self._new_iphashs = parse.sort(new_iphashs)
+
+		self._ipport = dict()
+		for node in self._new_iphashs:
+			self._ipport[node["ip"]] = node["port"]
 
 		self._add_node_index = new_iphashs.index(self._add_node_dict)
 		self._previous_dict = None
@@ -680,23 +685,26 @@ class MySQLAddNode(test.MySQLConsistency):
 		new_iphashs.append(addnode_dict)
 		parse.update_yaml(self._yaml_path,new_iphashs)
 
+
+
+
 def main():
 	parser = argparse.ArgumentParser(description="Add node from IP Address")
 	parser.add_argument("ip",help="IP Address of Node")
+	parser.add_argument("port",help="Port Number of Node")
 	parser.add_argument("yaml_path",help="Exists IP Addresses file path")
 
 	args = parser.parse_args()
 
 	columns = clms.Columns("id","username","hash_username","comment","start")
-	addnode = MySQLAddNode(args.ip,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"])
+	addnode = MySQLAddNode(args.ip,args.port,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"])
 
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")
 	print(f"insert IP: {addnode.insert_ip}")
 	print(f"add IP: {addnode.add_ip}")
 
-#	addnode.sid(steal_port=13306,insert_port=23306)
-	addnode.anotice()
+	addnode.sid(steal_port=13306,insert_port=23306)
 
 if __name__ == "__main__":
 	main()

@@ -1,0 +1,3 @@
+[console_scripts]
+ad2b = scripts.add_node:main
+

@@ -9,9 +9,13 @@ if [ -z "$NODE" ];then
 	echo "NODE not found..."
 	exit 1
 fi
+if [ -z "$PORT" ];then
+	echo "PORT not found..."
+	exit 1
+fi
 NODEIP=$(docker network inspect $NODE | jq -r ".[].IPAM.Config[].Gateway")
 
 echo "Node IP Address: $NODEIP"
 cat $YAMLFILE
 
-python add_node.py $NODEIP $YAMLFILE
+python add_node.py $NODEIP $PORT $YAMLFILE
