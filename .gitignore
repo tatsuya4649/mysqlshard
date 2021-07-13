@@ -1,3 +1,5 @@
 .*.swp
 */data/*
+build
+dist
 __pycache__
