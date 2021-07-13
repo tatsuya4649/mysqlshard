@@ -1,0 +1,42 @@
+Metadata-Version: 1.2
+Name: ad2b
+Version: 0.0.1
+Summary: Sharding Database Tool
+Home-page: UNKNOWN
+Author: Tatsuya.S
+Author-email: tatsuya4946developer@gmail.com
+License: UNKNOWN
+Description: 
+        # MySQL Sharding System
+        
+        ![ Sharding ](images/shard.png)
+        
+        # Startup Node(MySQL) Container
+        
+        required:
+        
+        * docker
+        
+        * NODE Environment variable(node name used in docker)
+        
+        * PORT Environment variable(node port used in docker)
+        
+        for example.
+        
+        ```
+        
+        cd node
+        export NODE=node1 PORT=13306
+        
+        ./build.sh && ./run.sh
+        
+        ```
+        
+        completed mysql container.
+        
+        # Required Docker container
+        
+        * mysql:8.0
+        
+Platform: UNKNOWN
+Requires-Python: >=3.6

@@ -9,27 +9,25 @@ class NoticeArgsError(Exception):
 	pass
 
 class Notice:
-	def __init__(self,notice,*notice_args,**notice_kwargs):
+	def __init__(self,notice):
 		# Check scripts or function
 		if callable(notice):
 			self._way = Way.FUNC
 		if isinstance(notice,str):
 			self._way = Way.SCRIPT
+		self._notice = notice
+	# execute
+	def __call__(self,*notice_args,**notice_kwargs):
+		if self._way == Way.FUNC:
+			self._notice(*notice_args,**notice_kwargs)
+		elif self._way == Way.SCRIPT:
 			if len(notice_kwargs.keys()) != 0:
 				raise NoticeArgsError("kwargs is invalid in script.")
-		self._notice = notice
-		self._notice_args = notice_args
-		self._notice_kwargs = notice_kwargs
-	# execute
-	def __call__(self):
-		if self._way == Way.FUNC:
-			self._notice(*self._notice_args,**self._notice_kwargs)
-		elif self._way == Way.SCRIPT:
 			command = list()
 			command.append(self._notice)
-			if len(self._notice_args) != 0:
-				print(self._notice_args)
-				command.append(*self._notice_args)
+			if len(notice_args) != 0:
+				print(notice_args)
+				command.append(*notice_args)
 			print(command)
 			subprocess.run(command)
 			print(f"{self._notice}")
@@ -45,8 +43,8 @@ if __name__ == "__main__":
 		def __init__(self,hello_args):
 			self._hello_args = hello_args
 		def notice(self):
-			notice = Notice(hello,*self._hello_args)
-			notice()
+			notice = Notice(hello)
+			notice(*self._hello_args)
 	
 	args = ["hello","world"]
 	a = A(args)
