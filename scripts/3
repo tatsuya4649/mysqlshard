@@ -656,15 +656,26 @@ class MySQLAddNode(test.MySQLConsistency):
 		print(f"Success: Insert into {self.insert_ip}")
 		print(f"Success: Delete from {self.steal_ip}")
 		if update:
-			self._update_yaml()
-
-	def _update_yaml(self):
+			self.update_yaml()
+	def update_yaml(self):
 		addnode_dict = dict()
 		addnode_dict["ip"] = self.add_ip
 		addnode_dict["hash"] = self.add_hash
 		new_iphashs = self._exists_iphashs
 		new_iphashs.append(addnode_dict)
 		parse.update_yaml(self._yaml_path,new_iphashs)
+#		try:
+#			self.contest_insert()
+#		except test.ConsistencyInsertError as e:
+#			if choice.insert_retry(self.insert_ip,e.err_count):
+#				pass
+#		except test.ConsistencyUnmatchError as e:
+#			if choice.insert_redo():
+#				self.insert_redo()
+#		else:
+#			if choice.delete_data(self.delete_ip):
+#				res = self.delete_data(port=13306)
+#			self.contest_delete()
 
 
 if __name__ == "__main__":

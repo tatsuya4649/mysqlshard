@@ -6,6 +6,10 @@ class ConsistencyInsertError(Exception):
 	def __init__(self,str,err_count):
 		super().__init__(str)
 		self.err_count = err_count
+class ConsistencyDeleteError(Exception):
+	def __init__(self,str,err_count):
+		super().__init__(str)
+		self.err_count = err_count
 class ConsistencyUnmatchError(Exception):
 	pass
 class ConsistencyYetError(Exception):
