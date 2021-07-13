@@ -14,4 +14,4 @@ NODEIP=$(docker network inspect $NODE | jq -r ".[].IPAM.Config[].Gateway")
 echo "Node IP Address: $NODEIP"
 cat $YAMLFILE
 
-python add_node.py $NODE2IP $YAMLFILE
+python add_node.py $NODEIP $YAMLFILE

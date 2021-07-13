@@ -375,8 +375,8 @@ class AddNode:
 		for ip in self.steal_ip:
 			host = ip
 			query = self._ip_query[ip]
-			print("----------------------------------------")
-			print(f"Select: From Host \"{host}\", Port \"{port}\",Database \"{database}\", Table \"{table}\", Execute Query \"{query}\"")
+			#print("----------------------------------------")
+			#print(f"Select: From Host \"{host}\", Port \"{port}\",Database \"{database}\", Table \"{table}\", Execute Query \"{query}\"")
 			# Steal Next Host
 			host = ip
 			self._conn = pymysql.connect(
@@ -389,8 +389,8 @@ class AddNode:
 			)
 			try:
 				with self._conn.cursor() as cursor:
-					sql = f"SELECT * FROM {table} WHERE {self._ip_query[ip]}"
-					print(f"{sql}")
+					sql = f"SELECT * FROM {table} WHERE {query}"
+					#print(f"{sql}")
 					cursor.execute(sql)
 					results = cursor.fetchall()
 					self._steal_data = results
@@ -406,9 +406,6 @@ class AddNode:
 	# Delete Steal Data
 	def delete_data(
 		self,
-		database,
-		table,
-		scheme,
 		port=3306,
 		user='root',
 		password='mysql',
@@ -420,21 +417,26 @@ class AddNode:
 			port=port,
 			user=user,
 			password=password,
-			database=database,
-			cursor=pymysql.cursors.DictCursor
+			db=self._database,
+			cursorclass=pymysql.cursors.DictCursor
 		)
-		try:
-			with self._conn.cursor() as cursor:
-				sql = f"DELETE FROM {table} WHERE {hashcolmn} > {self.move_data_hashid_small} AND {hashcolumn} <= {self.move_data_hashid_big}"
-				print(f"{sql}")
-				self._conn.begin()
-				cursor.execute(sql)
-				self._conn.commit()
-		except Exception as e:
-			print(e)
-			pass
-		finally:
-			self._conn = None
+		res_list = list()
+		for ip in self.steal_ip:
+			query = self._ip_query[ip]
+			try:
+				with self._conn.cursor() as cursor:
+					sql = f"DELETE FROM {self._table} WHERE {query}"
+					print(f"{sql}")
+					self._conn.begin()
+					res = cursor.execute(sql)
+					res_list.append(res)
+					self._conn.commit()
+			except Exception as e:
+				print(e)
+				pass
+			finally:
+				self._conn = None
+		return res_list
 
 	@property
 	def insert_ip(self):
@@ -503,6 +505,8 @@ class AddNode:
 		return res_list
 	def error_insert(self,res_list):
 		return [ i for i,x in enumerate(res_list) if x == 0]
+	def error_delete(self,res_list):
+		pass
 
 	@property
 	def columns(self):
@@ -527,8 +531,8 @@ if __name__ == "__main__":
 	print(f"add IP: {addnode.add_ip}")
 
 	steal_data = addnode.steal_data("sharding","user",13306)
-	print(len(steal_data))
-	print(addnode.columns)
-	res = addnode.insert_data(port=23306)
-	print(res)
+#	res = addnode.insert_data(port=23306)
+#	print(res)
+#	res = addnode.delete_data(port=13306)
+#	print(res)
 
