@@ -5,9 +5,13 @@ if ! [ -f "$YAMLFILE" ]; then
 	make clean
 	make
 fi
-NODE2IP=$(docker network inspect node2 | jq -r ".[].IPAM.Config[].Gateway")
+if [ -z "$NODE" ];then
+	echo "NODE not found..."
+	exit 1
+fi
+NODEIP=$(docker network inspect $NODE | jq -r ".[].IPAM.Config[].Gateway")
 
-echo "Node2 IP Address: $NODE2IP"
+echo "Node IP Address: $NODEIP"
 cat $YAMLFILE
 
 python add_node.py $NODE2IP $YAMLFILE

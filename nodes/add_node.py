@@ -470,6 +470,39 @@ class AddNode:
 				print(e)
 		self._conn = None
 		return res_list
+	def part_insert_date(
+		self,
+		index_list,
+		port=3306,
+		user='root',
+		password='mysql'
+	):
+		# Delete Add Host
+		host = self.add_ip
+		self._conn = pymysql.connect(
+			host=host,
+			port=port,
+			user=user,
+			password=password,
+			database=self._database,
+			cursorclass=pymysql.cursors.DictCursor
+		)
+		res_list = list()
+		for idx in index_list:
+			try:
+				with self._conn.cursor() as cursor:
+					sql = f"INSERT INTO {self._table} {str(self._columns)} VALUES {self._columns.convert(self._steal_date[idx])}"
+					print(sql)
+					self._conn.begin()
+					res = cursor.execute(sql)
+					res_list.append(res)
+					self._conn.commit()
+			except Exception as e:
+				print(e)
+		self._conn = None
+		return res_list
+	def error_insert(self,res_list):
+		return [ i for i,x in enumerate(res_list) if x == 0]
 
 	@property
 	def columns(self):
@@ -494,7 +527,7 @@ if __name__ == "__main__":
 	print(f"add IP: {addnode.add_ip}")
 
 	steal_data = addnode.steal_data("sharding","user",13306)
-	print(steal_data)
+	print(len(steal_data))
 	print(addnode.columns)
 	res = addnode.insert_data(port=23306)
 	print(res)
