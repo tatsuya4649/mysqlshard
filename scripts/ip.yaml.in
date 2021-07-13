@@ -1,0 +1,3 @@
+ips:
+#include "../node/NODE1IP"
+/* #include "../node/NODE2IP" */

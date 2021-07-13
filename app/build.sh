@@ -1,9 +1,6 @@
 #!/bin/bash
 
-
-NODE1IP=$(docker network inspect node1 | jq -r ".[].IPAM.Config[].Gateway")
-
-echo "$NODE1IP" > NODE1IP
+source ./var.sh
 
 cd ..
 docker build -t shapp -f app/Dockerfile .

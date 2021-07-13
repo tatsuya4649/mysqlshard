@@ -34,6 +34,8 @@ class Columns:
 		res_value = "("
 		for i in range(len(self._columns)):
 			value = values[self._columns[i]]
+			if value is None:
+				value = "NULL"
 			if isinstance(value,str):
 				value = f"\"{value}\""
 			if isinstance(value,datetime.datetime):

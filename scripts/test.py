@@ -2,7 +2,13 @@ import hashlib
 import ip as ipm
 import pymysql
 
-class ConsistencyErorr(Exception):
+class ConsistencyInsertError(Exception):
+	def __init__(self,str,err_count):
+		super().__init__(str)
+		self.err_count = err_count
+class ConsistencyUnmatchError(Exception):
+	pass
+class ConsistencyYetError(Exception):
 	pass
 class IPRegularExpressionError(ValueError):
 	pass
@@ -15,35 +21,67 @@ class Consistency:
 		# database: test database name
 		# table: test table name
 	"""
-	def __init__(self,addip,ipquery,database,table):
+	def __init__(self,addip,database,table):
 		self._addip = addip
 		self._database = database
 		self._table = table
-		self._ipquery = ipquery
 
+		self._steal = False
+		self._insert = False
+		self._delete = False
+
+		self._insert_dataset = dict()
+		self._steal_dataset = dict()
+		self._delete_dataset = dict()
+
+#	@property
+#	def ipquery(self):
+#		return self._ipquery
 	@property
-	def ipquery(self):
-		return self._ipquery
+	def steal_len(self):
+		raise NotImplementedError("test")
+	@property
+	def insert_len(self):
+		raise NotImplementedError("test")
+	@property
+	def delete_len(self):
+		raise NotImplementedError("test")
 
-	def query(self,ip):
-		if ipm.ip_check(ip):
-			return self._ipquery[ip]
-		else:
-			raise IPRegularExpressionError(f"invalid \"{ip}\"")
+#	def query(self,ip):
+#		if ipm.ip_check(ip):
+#			return self._ipquery[ip]
+#		else:
+#			raise IPRegularExpressionError(f"invalid \"{ip}\"")
 	def contest(self):
+		raise NotImplementedError("test")
+	def contest_insert(self):
 		raise NotImplementedError("test")
 	def connect(self):
 		raise NotImplementedError("connect to database")
 	def select(self,query):
 		raise NotImplementedError("select data from table of database")
-
+	def steal(self):
+		self._steal = True
+	def insert(self):
+		self._insert = True
+	def delete(self):
+		self._delete = True
+	def _check_i(self):
+		if self._insert is False:
+			raise consistencyyeterror("yes called insert data function")
+	def _check_si(self):
+		if self._steal is False:
+			raise ConsistencyYetError("yet called steal data function")
+		if self._insert is False:
+			raise consistencyyeterror("yes called insert data function")
 
 class MySQLConsistency(Consistency):
-	def __init__(self,addip,ipquery,database,table,port=3306,user="root",password="mysql"):
-		super().__init__(addip,ipquery,database,table)
+	def __init__(self,addip,database,table,port=3306,user="root",password="mysql"):
+		super().__init__(addip,database,table)
 		self._port = port
 		self._user = user
 		self._password = password
+
 	def connect(self,ip,port,user,password,charset="utf8"):
 		connection = pymysql.connect(
 			host=ip,
@@ -68,9 +106,11 @@ class MySQLConsistency(Consistency):
 		4. Check Consistency step.2 set() and step.3 set()
 		5. return True or False
 	"""
-	def contest(self):
+	def contest(self,ipquery):
+		self._check_si()
 		connect = self.connect(self._addip,self._port,self._user,self._password)
 		column_setdict = dict()
+
 		for key in self.ipquery.keys():
 			results = self.select(connect,ipquery[key])
 			for reskey in results[0].keys():

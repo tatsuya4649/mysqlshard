@@ -1,5 +1,0 @@
-#include "../mysql.docker"
-
-COPY ./init.d /docker-entrypoint-initdb.d
-
-EXPOSE	3306

@@ -4,11 +4,15 @@ import re
 import sys
 import copy
 import pymysql
+import test
+import choice
 import columns as clms
 from algo import con
+import time
 
-class AddNode:
+class MySQLAddNode(test.MySQLConsistency):
 	def __init__(self,ip,hash_column,database,table,columns,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False):
+		super().__init__(ip,database,table)
 		if not isinstance(columns,clms.Columns):
 			raise TypeError("column argument's type  must be Columns")
 		self._columns = columns
@@ -363,6 +367,15 @@ class AddNode:
 	@property
 	def steal_ip(self):
 		return list(self._ip_query.keys())
+	def _steal_dataset_init(self):
+		if len(self._steal_data) != 0:
+			for column in self._steal_data[0]:
+				self._steal_dataset[column] = set()
+	def _steal_dataset_set(self):
+		if len(self._steal_data) != 0:
+			for data in self._steal_data:
+				for column in data.keys():
+					self._steal_dataset[column].add(data[column])
 	# Steal Data From Next
 	def steal_data(
 		self,
@@ -396,25 +409,96 @@ class AddNode:
 					self._steal_data = results
 			except Exception as e:
 				self._steal_data = None
-				pass
 			finally:
 				self._conn = None
+		self.steal()
+		self._steal_dataset_init()
+		self._steal_dataset_set()
+			
 		return self._steal_data
 	@property
 	def delete_ip(self):
 		return list(self._ip_query.keys())
+	def _delete_dataset_init(self):
+		if len(self._steal_data) != 0:
+			for column in self._steal_data[0]:
+				self._delete_dataset[column] = set()
 	# Delete Steal Data
 	def delete_data(
 		self,
 		port=3306,
 		user='root',
 		password='mysql',
+		wait_printtime=10,
 	):
-		# Delete Next Host
-		host = self.next_ip
+		res_list = list()
+		self._delete_dataset_init()
+		for ip in self.steal_ip:
+			self._conn = pymysql.connect(
+				host=ip,
+				port=port,
+				user=user,
+				password=password,
+				db=self._database,
+				cursorclass=pymysql.cursors.DictCursor
+			)
+			query = self._ip_query[ip]
+			try:
+				with self._conn.cursor() as cursor:
+					sql = f"DELETE FROM {self._table} WHERE {query}"
+					print(f"{sql}")
+					self._conn.begin()
+					res = cursor.execute(sql)
+					self._conn.commit()
+					res_list.append(res)
+			except Exception as e:
+				print(e)
+				time.sleep(wait_printtime)
+			finally:
+				self._conn = None
+		self._delete_res = res_list
+		self.delete()
+		return res_list
+	@property
+	def insert_ip(self):
+		return self.add_ip
+	def contest_delete(self):
+		try:
+	def _contest_delete(self):
+		if self._steal_len != self.delete_len:
+			raise test.ConsistencyInsertError("Detect Insert Error",(self.delete_len - self.steal_len))
+		for column in self._delete_dataset.keys():
+			if self._delete_dataset[column] != self._steal_dataset[column]:
+				raise test.ConsistencyUnmatchError("delete dataset unmatch to steal dataset")
+	def contest_insert(self):
+		try:
+			self.contest_insert()
+		except test.ConsistencyInsertError as e:
+			if choice.insert_retry(self.insert_ip,e.err_count):
+				pass
+		except test.ConsistencyUnmatchError as e:
+			if choice.insert_redo():
+				self.insert_redo()
+		else:
+			return True
+		finally:
+			return False
+	def _contest_insert(self):
+		# 0 => mysql execute error
+		if 0 in self._insert_res:
+			raise test.ConsistencyInsertError("Detect Insert Error",len([x for x in self._insert_res if x == 0]))
+			
+		for column in self._steal_dataset.keys():
+			if self._insert_dataset[column] != self._steal_dataset[column]:
+				raise test.ConsistencyUnmatchError("insert dataset unmatch to steal dataset")
+	def insert_redo(
+		self,
+		user='root',
+		password='mysql',
+	):
 		self._conn = pymysql.connect(
-			host=host,
-			port=port,
+			host=self.insert_ip,
+			port=self._insert_port,
 			user=user,
 			password=password,
 			db=self._database,
@@ -436,17 +520,18 @@ class AddNode:
 				pass
 			finally:
 				self._conn = None
-		return res_list
-
-	@property
-	def insert_ip(self):
-		return self.add_ip
+	def _insert_dataset_init(self):
+		if len(self._steal_data) != 0:
+			for column in self._steal_data[0]:
+				self._insert_dataset[column] = set()
+		
 	# Insert New Data
 	def insert_data(
 		self,
 		port=3306,
 		user='root',
 		password='mysql',
+		wait_printtime=10, # waiting for confirming Error 
 	):
 		# Delete Add Host
 		host = self.add_ip
@@ -458,7 +543,9 @@ class AddNode:
 			database=self._database,
 			cursorclass=pymysql.cursors.DictCursor
 		)
+		self._insert_port = port
 		res_list = list()
+		self._insert_dataset_init()
 		for insert_data in self._steal_data:
 			try:
 				with self._conn.cursor() as cursor:
@@ -466,12 +553,44 @@ class AddNode:
 					print(sql)
 					self._conn.begin()
 					res = cursor.execute(sql)
-					res_list.append(res)
 					self._conn.commit()
+					for column in insert_data.keys():
+						self._insert_dataset[column].add(insert_data[column])
+					res_list.append(res)
 			except Exception as e:
+				res_list.append(0)
 				print(e)
+				time.sleep(wait_printtime)
 		self._conn = None
+		self._insert_res = res_list
+
+		print("============== Insert Dataset Counter =================")
+		print(len(self._insert_res))
+		for key in self._insert_dataset.keys():
+			print(f"{key} => {len(self._insert_dataset[key])}")
+
+		self.insert()
 		return res_list
+
+	@property
+	def steal_len(self):
+		return len(self._steal_data)
+	@property
+	def insert_len(self):
+		if len(self._insert_res) == 0:
+			return 0
+		total = 0
+		for i in self._insert_res:
+			total += i
+		return total
+	@property
+	def delete_len(self):
+		if len(self._delete_res) == 0:
+			return 0
+		total = 0
+		for i in self._delete_res:
+			total += i
+		return total
 	def part_insert_date(
 		self,
 		index_list,
@@ -500,11 +619,16 @@ class AddNode:
 					res_list.append(res)
 					self._conn.commit()
 			except Exception as e:
+				res_list.append(0)
 				print(e)
+				time.sleep(wait_printtime)
 		self._conn = None
 		return res_list
-	def error_insert(self,res_list):
-		return [ i for i,x in enumerate(res_list) if x == 0]
+	@property
+	def error_insert(self):
+		self._check_i()
+		return [ i for i,x in enumerate(self._insert_res) if x == 0]
+	@property
 	def error_delete(self,res_list):
 		pass
 
@@ -512,8 +636,30 @@ class AddNode:
 	def columns(self):
 		return self._columns
 
+	# Steal,Insert,Delete
+	def sid(self,steal_port=3306,insert_port=3306):
+		steal_data = addnode.steal_data("sharding","user",steal_port)
+		print("============== Steal Dataset Counter =================")
+		for key in addnode._steal_dataset.keys():
+			print(f"{key} => {len(addnode._steal_dataset[key])}")
 
-	
+		res = self.insert_data(port=insert_port)
+		self.contest_insert()
+		if choice.delete_data(self.delete_ip):
+			res = self.delete_data(port=13306)
+		self.contest_delete()
+#		try:
+#			self.contest_insert()
+#		except test.ConsistencyInsertError as e:
+#			if choice.insert_retry(self.insert_ip,e.err_count):
+#				pass
+#		except test.ConsistencyUnmatchError as e:
+#			if choice.insert_redo():
+#				self.insert_redo()
+#		else:
+#			if choice.delete_data(self.delete_ip):
+#				res = self.delete_data(port=13306)
+#			self.contest_delete()
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Add node from IP Address")
@@ -523,7 +669,7 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 
 	columns = clms.Columns("id","username","hash_username","comment","start")
-	addnode = AddNode(args.ip,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True)
+	addnode = MySQLAddNode(args.ip,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True)
 
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")
@@ -531,8 +677,24 @@ if __name__ == "__main__":
 	print(f"add IP: {addnode.add_ip}")
 
 	steal_data = addnode.steal_data("sharding","user",13306)
-#	res = addnode.insert_data(port=23306)
-#	print(res)
+	print("============== Steal Dataset Counter =================")
+	for key in addnode._steal_dataset.keys():
+		print(f"{key} => {len(addnode._steal_dataset[key])}")
+		
+	res = addnode.insert_data(port=23306)
+	print(addnode.insert_len)
+	try:
+		addnode.contest_insert()
+	except test.ConsistencyInsertError as e:
+		if choice.insert_retry(addnode.insert_ip,e.err_count):
+			pass
+	except test.ConsistencyUnmatchError as e:
+		if choice.insert_redo():
+			addnode.insert_redo()
+	else:
+		if choice.delete_data(addnode.delete_ip):
+			res = addnode.delete_data(port=13306)
+#	print(addnode.error_insert)
 #	res = addnode.delete_data(port=13306)
 #	print(res)
 
