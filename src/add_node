@@ -1,0 +1,49 @@
+#!/bin/bash
+
+YAMLFILE="./ip.yaml"
+if ! [ -f "$YAMLFILE" ]; then
+	make clean
+	make
+fi
+if [ -z "$NODE" ];then
+	echo "NODE not found..."
+	exit 1
+fi
+if [ -z "$PORT" ];then
+	echo "PORT not found..."
+	exit 1
+fi
+if [ -z "$HC" ]; then
+	echo "HASH COLUMN not found..."
+	exit 1
+fi
+if [ -z "$DB" ]; then
+	echo "DB not found..."
+	exit 1
+fi
+if [ -z "$TABLE" ]; then
+	echo "TABLE not found..."
+	exit 1
+fi
+if [ -n "$NOTICE" ]; then
+	NOTICE="-s $NOTICE"
+fi
+NODEIP=$(docker network inspect $NODE | jq -r ".[].IPAM.Config[].Gateway")
+
+echo "Node IP Address: $NODEIP"
+cat $YAMLFILE
+
+USER=root
+PASSWORD=mysql
+python ad2b 	\
+		--ip $NODEIP \
+		--port $PORT \
+		--yaml_path $YAMLFILE \
+		--user $USER \
+		--password $PASSWORD \
+		--hash_column $HC \
+		--db $DB \
+		--table $TABLE \
+		$NOTICE \
+		--secret_once \
+

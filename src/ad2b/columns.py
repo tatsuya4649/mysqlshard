@@ -59,6 +59,7 @@ class Columns:
 
 import pymysql
 import re
+import sys
 class MySQLNUMERIC(Enum):
 	# Numeric Type
 	TINYINT		= 1
@@ -202,14 +203,14 @@ class MySQLColumns(Columns):
 				raise ColumnsNotValue(f"{key} not found in {self._columns}")
 		res_value = "("
 		for i in range(len(self._columns)):
-			value = values[self._columns[i]]
-			type = self._column_type[self._columns[i]]
+			cvalue = values[self._columns[i]]
+			ctype = self._columns_type[self._columns[i]]
 
-			if value is None:
-				value = "NULL"
-			elif type not in MySQLColumnType.MySQLNUMERIC.value:
-				value = f"\"{value}\""
-			res_value += f"{value}"
+			if cvalue is None:
+				cvalue = "NULL"
+			elif ctype not in MySQLColumnType.NUMERIC.value:
+				cvalue = f"\"{cvalue}\""
+			res_value += f"{cvalue}"
 			if i < len(self._columns)-1:
 				res_value += ", "
 			else:

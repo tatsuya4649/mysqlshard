@@ -1,3 +1,4 @@
+import sys
 import add_node
 import argparse
 
@@ -16,13 +17,18 @@ def main():
 	parser.add_argument("--secret",help="No use of yaml user,password, use interactive input",action="store_true")
 	parser.add_argument("--secret_once",help="If Once input user/password, it use at all database user/password ",action="store_true")
 	parser.add_argument("--ping_interval",help="PING test interval time",type=int,default=1)
+	parser.add_argument("--non_update",help="YAML non update",action="store_false")
+	parser.add_argument("--non_notice",help="No execute notice script",action="store_false")
 
 	args = parser.parse_args()
+	
+	if args.notice_args is None:
+		args.notice_args = []
 
 	a2node = add_node.MySQLAddNode(
 		ip = args.ip,
 		port = args.port,
-		hash_column = args.hashcolumn,
+		hash_column = args.hash_column,
 		database = args.db,
 		table = args.table,
 		yaml_path = args.yaml_path,
@@ -34,4 +40,4 @@ def main():
 		secret_once = args.secret_once,
 		ping_interval = args.ping_interval,
 	)
-	#a2node.sig()
+	a2node.sid(script=args.non_notice,update=args.non_update)

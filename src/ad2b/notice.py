@@ -28,7 +28,6 @@ class Notice:
 			if len(notice_args) != 0:
 				print(notice_args)
 				command.append(*notice_args)
-			print(command)
 			subprocess.run(command)
 			print(f"{self._notice}")
 	@property

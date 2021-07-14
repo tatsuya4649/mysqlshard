@@ -372,6 +372,7 @@ class MySQLAddNode(test.MySQLConsistency):
 	def steal_data(
 		self
 	):
+		self._steal_ip_count = dict()
 		for ip in self.steal_ip:
 			host = ip
 			query = self._ip_query[ip]
@@ -383,17 +384,17 @@ class MySQLAddNode(test.MySQLConsistency):
 				host=host,
 				port=self._ipport[ip],
 				user=self._ipuser[ip],
-				password=self._ippassword,
+				password=self._ippass[ip],
 				database=self._database,
 				cursorclass=pymysql.cursors.DictCursor
 			)
 			try:
 				with self._conn.cursor() as cursor:
 					sql = f"SELECT * FROM {self._table} WHERE {query}"
-					#print(f"{sql}")
 					cursor.execute(sql)
 					results = cursor.fetchall()
 					self._steal_data = results
+					self._steal_ip_count[host] = len(results)
 			except Exception as e:
 				self._steal_data = None
 			finally:
@@ -602,6 +603,11 @@ class MySQLAddNode(test.MySQLConsistency):
 				time.sleep(wait_printtime)
 		self._conn = None
 		return res_list
+	
+	# Show amount of data ratio before and after
+	def _before_after(self):
+		for ip in self._steal_ip_count.keys():
+			print(f"{ip}: {self._steal_ip_count}")
 
 	@property
 	def columns(self):
@@ -609,15 +615,17 @@ class MySQLAddNode(test.MySQLConsistency):
 
 	# Steal,Insert,Delete
 	def sid(self,script=True,update=True):
-		steal_data = addnode.steal_data("sharding","user",steal_port)
+		steal_data = self.steal_data()
 		print("============== Steal Dataset Counter =================")
-		for key in addnode._steal_dataset.keys():
-			print(f"{key} => {len(addnode._steal_dataset[key])}")
+		for key in self._steal_dataset.keys():
+			print(f"{key} => {len(self._steal_dataset[key])}")
+
+		self._before_after()
 
 		res = self.insert_data()
 		if self.contest_insert():
 			if choice.delete_data(self.delete_ip):
-				res = self.delete_data(port=steal_port)
+				res = self.delete_data()
 				self.contest_delete()
 
 		print(f"Success: Steal from {self.steal_ip}")
@@ -629,9 +637,6 @@ class MySQLAddNode(test.MySQLConsistency):
 				self._notice(*self._notice_args,**self._notice_kwargs)
 		if update:
 			self._update_yaml()
-	def anotice(self):
-		if self._notice is not None:
-			self._notice(*self._notice_args,**self._notice_kwargs)
 
 	def _update_yaml(self):
 		addnode_dict = dict()
