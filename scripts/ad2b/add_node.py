@@ -36,8 +36,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		super().__init__(ip,database,table)
 		if not isinstance(port,int):
 			raise ValueError("PORT number must be int")
-		if not isinstance(columns,clms.Columns):
-			raise TypeError("column argument's type  must be Columns")
 		if funcpath is not None:
 			self._notice = notice.Notice(funcpath)
 		else:
@@ -77,7 +75,8 @@ class MySQLAddNode(test.MySQLConsistency):
 			database=self._database,
 			table=self._table,
 			user=user,
-			password=password
+			password=password,
+			show_column=True
 		)
 
 		new_iphashs = copy.deepcopy(self._exists_iphashs)
@@ -102,10 +101,6 @@ class MySQLAddNode(test.MySQLConsistency):
 			self._ipuser[node["ip"]] = node["user"]
 			self._ippass[node["ip"]] = node["password"]
 			ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
-
-		print(self._ipuser)
-		print(self._ippass)
-		sys.exit(1)
 
 		self._add_node_index = new_iphashs.index(self._add_node_dict)
 		self._conn = None
@@ -660,12 +655,7 @@ def main():
 
 	addnode = MySQLAddNode(args.ip,args.port,"hash_username","sharding","user",args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"],secret_once=True)
 
-	print(f"steal IP: {addnode.steal_ip}")
-	print(f"delete IP: {addnode.delete_ip}")
-	print(f"insert IP: {addnode.insert_ip}")
-	print(f"add IP: {addnode.add_ip}")
-
-	addnode.sid(steal_port=13306,insert_port=23306)
+	#addnode.sid(steal_port=13306,insert_port=23306)
 
 if __name__ == "__main__":
 	main()

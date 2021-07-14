@@ -9,6 +9,11 @@ class ColumnsNotValue(ValueError):
 class ColumnType(Enum):
 	pass
 
+def _column_deco(func):
+	def _wrapper(*args,**kwargs):
+		func(*args,**kwargs)
+	return _wrapper
+
 class Columns:
 	def __init__(self,**kwargs):
 		self._port = kwargs["port"]
@@ -20,6 +25,11 @@ class Columns:
 
 		self._columns = list()
 		self._columns_type = dict()
+		
+		if "show_column" in kwargs.keys():
+			self._show_column = True
+		else:
+			self._show_column = False
 
 		self._get_columns()
 	def __iter__(self):
@@ -110,8 +120,14 @@ class MySQLColumns(Columns):
 
 					self._desc = cursor.fetchall()
 					self._add_columns()
+
+					self._display_columns()
 		except Exception as e:
 			raise
+	@_column_deco
+	def _display_columns(self):
+		if self._show_column:
+			print(self)	
 	def _add_columns(self):
 		for column in self._describe:
 			field = column["Field"]
@@ -211,6 +227,6 @@ if __name__ == "__main__":
 		user="root",
 		password="mysql",
 		database="sharding",
-		table="user"
+		table="user",
+		show_column=True
 	)
-	print(columns)
