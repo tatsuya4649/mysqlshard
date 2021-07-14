@@ -33,17 +33,19 @@ NODEIP=$(docker network inspect $NODE | jq -r ".[].IPAM.Config[].Gateway")
 echo "Node IP Address: $NODEIP"
 cat $YAMLFILE
 
-USER=root
-PASSWORD=mysql
+#USER=root
+#PASSWORD=mysql
+#		--user $USER \
+#		--password $PASSWORD \
 python ad2b 	\
 		--ip $NODEIP \
 		--port $PORT \
 		--yaml_path $YAMLFILE \
-		--user $USER \
-		--password $PASSWORD \
 		--hash_column $HC \
 		--db $DB \
 		--table $TABLE \
 		$NOTICE \
 		--secret_once \
+		-v 300 \
+
 

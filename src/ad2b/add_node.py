@@ -32,7 +32,8 @@ class MySQLAddNode(test.MySQLConsistency):
 		password=None,
 		secret=False,
 		secret_once=False,
-		ping_interval=1
+		ping_interval=1,
+		virtual_nodecount=100
 	):
 		super().__init__(ip,database,table)
 		if not isinstance(port,int):
@@ -60,7 +61,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._add_node_dict["ip"] = add_node_ip
 		self._add_node_dict["port"] = port
 		self._add_node_dict["hash"] = add_node_hash
-		if user is None or password is None  or secret:
+		if user is None or password is None or secret:
 			res = userpass.secret_userpass(add_node_ip,port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
 			user = res["user"]
 			password = res["password"]
@@ -85,10 +86,10 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._new_iphashs = parse.sort(new_iphashs)
 
 		self._ipport = dict()
-		for node in self._new_iphashs:
-			self._ipport[node["ip"]] = node["port"]
 		self._ipuser = dict()
 		self._ippass = dict()
+		for node in self._new_iphashs:
+			self._ipport[node["ip"]] = node["port"]
 		userpassstr = f"\033[31mPlease input exists node database user and password\033[0m\nNOTICE: if trouble to input,\"secret=True\" in init function and insert user and password into yaml"
 		for node in self._new_iphashs:
 			if node["ip"] != add_node_ip:
@@ -103,11 +104,15 @@ class MySQLAddNode(test.MySQLConsistency):
 				self._ipuser[node["ip"]] = node["user"]
 				self._ippass[node["ip"]] = node["password"]
 				ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
+			else:
+				self._ipuser[add_node_ip] = user 
+				self._ippass[add_node_ip] = password 
 
 		self._add_node_index = new_iphashs.index(self._add_node_dict)
 		self._conn = None
 		self._steal_data = None
-		self._virtual_node(virtual_count)
+		self._virtual_nodecount=virtual_nodecount
+		self._virtual_node(self.virtual_nodecount)
 		self._hash_column = hash_column
 		self._DEBUG = _DEBUG
 		self._steal_ip = set()
@@ -549,11 +554,11 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._conn = None
 		self._insert_res = res_list
 
-		print("============== Insert Dataset Counter =================")
-		print(len(self._insert_res))
-		for key in self._insert_dataset.keys():
-			print(f"{key} => {len(self._insert_dataset[key])}")
-
+#		print("============== Insert Dataset Counter =================")
+#		print(len(self._insert_res))
+#		for key in self._insert_dataset.keys():
+#			print(f"{key} => {len(self._insert_dataset[key])}")
+#
 		self.insert()
 		return res_list
 
@@ -732,8 +737,6 @@ class MySQLAddNode(test.MySQLConsistency):
 #				print(f"{key} => {len(self._steal_dataset[key])}")
 
 		self._before_after()
-
-		sys.exit(1)
 
 		res = self.insert_data()
 		if self.contest_insert():

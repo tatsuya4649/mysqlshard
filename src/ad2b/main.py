@@ -14,6 +14,7 @@ def main():
 	parser.add_argument("-t","--table",help="Sharding Table name",type=str,required=True)
 	parser.add_argument("-s","--notice_script",help="When Success,execute script file")
 	parser.add_argument("-a","--notice_args",help="When Success,execute script file arguments",nargs="*")
+	parser.add_argument("-v","--virtual_nodecount",help="If you want the data to be more even,set it to a higher value(default: 100)",type=int,default=100)
 	parser.add_argument("--secret",help="No use of yaml user,password, use interactive input",action="store_true")
 	parser.add_argument("--secret_once",help="If Once input user/password, it use at all database user/password ",action="store_true")
 	parser.add_argument("--ping_interval",help="PING test interval time",type=int,default=1)
@@ -39,5 +40,6 @@ def main():
 		secret = args.secret,
 		secret_once = args.secret_once,
 		ping_interval = args.ping_interval,
+		virtual_nodecount = args.v,
 	)
 	a2node.sid(script=args.non_notice,update=args.non_update)
