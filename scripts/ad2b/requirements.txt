@@ -1,2 +1,0 @@
-PyYAML==5.4.1
-inquirer==2.7.0
