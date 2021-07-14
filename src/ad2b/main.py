@@ -25,7 +25,7 @@ def main():
 	
 	if args.notice_args is None:
 		args.notice_args = []
-
+	
 	a2node = add_node.MySQLAddNode(
 		ip = args.ip,
 		port = args.port,
@@ -40,6 +40,6 @@ def main():
 		secret = args.secret,
 		secret_once = args.secret_once,
 		ping_interval = args.ping_interval,
-		virtual_nodecount = args.v,
+		virtual_nodecount = args.virtual_nodecount,
 	)
 	a2node.sid(script=args.non_notice,update=args.non_update)
