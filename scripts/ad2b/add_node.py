@@ -51,30 +51,6 @@ class MySQLAddNode(test.MySQLConsistency):
 			self._ipport[node["ip"]] = node["port"]
 
 		self._add_node_index = new_iphashs.index(self._add_node_dict)
-		self._previous_dict = None
-		self._next_dict = None
-		# Get Previous IP of add_node_ip From HashID
-		if self._add_node_index == 0:
-			self._previous_dict = None
-			print("previous_dict is None...")
-		else:
-			self._previous_dict = dict()
-			self._previous_dict = new_iphashs[self._add_node_index-1]
-			self._previous_ip = self._previous_dict["ip"]
-			self._previous_hash = self._previous_dict["hash"]
-			print(f"Previous IP => {self._previous_ip}")
-			print(f"Previous Hash => {self._previous_hash}")
-
-		# Get Next IP of add_node_ip From HashID
-		if self._add_node_index == len(new_iphashs)-1:
-			self._next_dict = None
-			print("next_dict is None...")
-		else:
-			self._next_dict = new_iphashs[self._add_node_index+1]
-			self._next_ip = self._next_dict["ip"]
-			self._next_hash = self._next_dict["hash"]
-			print(f"Next IP => {self._next_ip}")
-			print(f"Next Hash => {self._next_hash}") 
 		self._conn = None
 		self._steal_data = None
 		self._virtual_node(virtual_count)
@@ -139,69 +115,14 @@ class MySQLAddNode(test.MySQLConsistency):
 	def add_ip(self):
 		return self._add_node_dict["ip"]
 	@property
+	def add_port(self):
+		return self._add_node_dict["port"]
+	@property
 	def add_hash(self):
 		return self._add_node_dict["hash"]
 	@property
 	def add_index(self):
 		return self._add_node_index
-	@property
-	def pre_ip(self):
-		if self._previous_dict is not None:
-			return self._previous_dict["ip"]
-		else:
-			return None
-	@property
-	def pre_hash(self):
-		if self._previous_dict is not None:
-			return self._previous_dict["hash"]
-		else:
-			return None
-	@property
-	def pre_index(self):
-		if self._add_node_index==0:
-			return None
-		else:
-			return self._add_node_index-1
-	@property
-	def next_ip(self):
-		if self._next_dict is not None:	
-			return self._next_dict["ip"]
-		else:
-			return None
-	@property
-	def next_hash(self):
-		if self._next_dict is not None:	
-			return self._next_dict["hash"]
-		else:
-			return None
-	@property
-	def next_index(self):
-		if self._add_node_index==len(self._new_iphashs)-1:
-			return None
-		else:
-			return self._add_node_index+1
-	
-	# Get Previous HashID
-	@property
-	def move_data_hashid_small(self):
-		return self.pre_hash
-	# Get Add HashID
-	@property
-	def move_data_hashid_big(self):
-		return self.add_hash
-
-	"""
-		add_virtual => Added virtual node dict("ip","hashs")
-		virtual_index => Index dict("ip",index) for getting the index with the smallest hash value greater than the hash value of add_virtual
-		virtualb_index => Index dict("ip",index) for getting the index with the biggest hash value smaller than the hash value of add_virtual
-		nonaddvirs => virtuals excluding add_virtual
-	"""
-	def _check_change(self,booldict):
-		for key in booldict.keys():
-			if booldict[key]:
-				return True
-		return False
-
 	def _debug_red(self,str):
 		if str is None:
 			return None
@@ -260,6 +181,12 @@ class MySQLAddNode(test.MySQLConsistency):
 		else:
 			return max(results)
 
+	"""
+		add_virtual => Added virtual node dict("ip","hashs")
+		virtual_index => Index dict("ip",index) for getting the index with the smallest hash value greater than the hash value of add_virtual
+		virtualb_index => Index dict("ip",index) for getting the index with the biggest hash value smaller than the hash value of add_virtual
+		nonaddvirs => virtuals excluding add_virtual
+	"""
 	def virtualhash(self,add_virtual,nonaddvirs):
 		rem_lists = list()
 		# res_dict["ip"],res_dict["query"]
@@ -439,7 +366,6 @@ class MySQLAddNode(test.MySQLConsistency):
 	# Delete Steal Data
 	def delete_data(
 		self,
-		port=3306,
 		user='root',
 		password='mysql',
 		wait_printtime=10,
@@ -449,7 +375,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		for ip in self.steal_ip:
 			self._conn = pymysql.connect(
 				host=ip,
-				port=port,
+				port=self._ipport[ip],
 				user=user,
 				password=password,
 				db=self._database,
@@ -543,7 +469,6 @@ class MySQLAddNode(test.MySQLConsistency):
 	# Insert New Data
 	def insert_data(
 		self,
-		port=3306,
 		user='root',
 		password='mysql',
 		wait_printtime=10, # waiting for confirming Error 
@@ -558,7 +483,7 @@ class MySQLAddNode(test.MySQLConsistency):
 			database=self._database,
 			cursorclass=pymysql.cursors.DictCursor
 		)
-		self._insert_port = port
+		self._insert_port = self.add_port
 		res_list = list()
 		self._insert_dataset_init()
 		for insert_data in self._steal_data:
@@ -652,13 +577,13 @@ class MySQLAddNode(test.MySQLConsistency):
 		return self._columns
 
 	# Steal,Insert,Delete
-	def sid(self,steal_port=3306,insert_port=3306,script=True,update=True):
+	def sid(self,script=True,update=True):
 		steal_data = addnode.steal_data("sharding","user",steal_port)
 		print("============== Steal Dataset Counter =================")
 		for key in addnode._steal_dataset.keys():
 			print(f"{key} => {len(addnode._steal_dataset[key])}")
 
-		res = self.insert_data(port=insert_port)
+		res = self.insert_data()
 		if self.contest_insert():
 			if choice.delete_data(self.delete_ip):
 				res = self.delete_data(port=steal_port)
@@ -680,6 +605,7 @@ class MySQLAddNode(test.MySQLConsistency):
 	def _update_yaml(self):
 		addnode_dict = dict()
 		addnode_dict["ip"] = self.add_ip
+		addnode_dict["port"] = self.add_port
 		addnode_dict["hash"] = self.add_hash
 		new_iphashs = self._exists_iphashs
 		new_iphashs.append(addnode_dict)
