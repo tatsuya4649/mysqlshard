@@ -643,20 +643,3 @@ class MySQLAddNode(test.MySQLConsistency):
 		parse.update_yaml(self._yaml_path,new_iphashs)
 
 
-
-
-def main():
-	parser = argparse.ArgumentParser(description="Add node from IP Address")
-	parser.add_argument("ip",help="IP Address of Node")
-	parser.add_argument("port",help="Port Number of Node",type=int)
-	parser.add_argument("yaml_path",help="Exists IP Addresses file path")
-
-	args = parser.parse_args()
-
-	addnode = MySQLAddNode(args.ip,args.port,"hash_username","sharding","user",args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"],secret_once=True)
-
-	#addnode.sid(steal_port=13306,insert_port=23306)
-
-if __name__ == "__main__":
-	main()
-
