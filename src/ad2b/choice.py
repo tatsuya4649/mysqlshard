@@ -1,5 +1,21 @@
 import inquirer
 
+def insert_ok():
+	questions = [
+		inquirer.List(
+			"insert_ok",
+			message=f"This results of sending sharding data to add new node. Insert now? (Ok?)",
+			choices=["Yes","No"],
+			carousel=False,
+		)
+	]
+	answer = inquirer.prompt(questions)
+	if answer["insert_ok"] == "Yes":
+		return True
+	else:
+		print("WARNING: No data has been sent yet!!!")
+		return False
+
 def insert_retry(ip,err_count):
 	questions = [
 		inquirer.List(

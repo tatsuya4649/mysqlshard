@@ -12,6 +12,7 @@ import ping
 import columns as clms
 from algo import con
 import time
+import shutil
 
 class MySQLAddNode(test.MySQLConsistency):
 	def __init__(
@@ -90,17 +91,18 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._ippass = dict()
 		userpassstr = f"\033[31mPlease input exists node database user and password\033[0m\nNOTICE: if trouble to input,\"secret=True\" in init function and insert user and password into yaml"
 		for node in self._new_iphashs:
-			time.sleep(ping_interval)
-			if ("user" not in node.keys() or "password" not in node.keys() or node["user"] is None or node["password"] is None or secret) and (secret_once is False):
-				res = userpass.secret_userpass(node["ip"],node["port"],self._database,userpassstr)
-				node["user"] = res["user"]
-				node["password"] = res["password"]
-			elif secret_once:
-				node["user"] = user
-				node["password"] = password
-			self._ipuser[node["ip"]] = node["user"]
-			self._ippass[node["ip"]] = node["password"]
-			ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
+			if node["ip"] != add_node_ip:
+				time.sleep(ping_interval)
+				if ("user" not in node.keys() or "password" not in node.keys() or node["user"] is None or node["password"] is None or secret) and (secret_once is False):
+					res = userpass.secret_userpass(node["ip"],node["port"],self._database,userpassstr)
+					node["user"] = res["user"]
+					node["password"] = res["password"]
+				elif secret_once:
+					node["user"] = user
+					node["password"] = password
+				self._ipuser[node["ip"]] = node["user"]
+				self._ippass[node["ip"]] = node["password"]
+				ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
 
 		self._add_node_index = new_iphashs.index(self._add_node_dict)
 		self._conn = None
@@ -112,6 +114,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._steal_query = dict()
 		self._insert_ip = set()
 		self._delete_ip = set()
+		self._total_data_count = dict()
 
 		self._ip_query = self._get_steal_query()
 
@@ -360,11 +363,11 @@ class MySQLAddNode(test.MySQLConsistency):
 	def steal_ip(self):
 		return list(self._ip_query.keys())
 	def _steal_dataset_init(self):
-		if len(self._steal_data) != 0:
+		if hasattr(self,"_steal_data") and self._steal_data is not None and len(self._steal_data) != 0:
 			for column in self._steal_data[0]:
 				self._steal_dataset[column] = set()
 	def _steal_dataset_set(self):
-		if len(self._steal_data) != 0:
+		if hasattr(self,"_steal_data") and self._steal_data is not None and len(self._steal_data) != 0:
 			for data in self._steal_data:
 				for column in data.keys():
 					self._steal_dataset[column].add(data[column])
@@ -506,7 +509,7 @@ class MySQLAddNode(test.MySQLConsistency):
 			finally:
 				self._conn = None
 	def _insert_dataset_init(self):
-		if len(self._steal_data) != 0:
+		if hasattr(self,"_steal_data") and self._steal_data is not None and len(self._steal_data) != 0:
 			for column in self._steal_data[0]:
 				self._insert_dataset[column] = set()
 		
@@ -604,10 +607,114 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._conn = None
 		return res_list
 	
+	def _get_allnode_data_count(self):
+		for node in self._new_iphashs:
+			ip = node["ip"]
+			port = node["port"]
+			try:
+				conn = pymysql.connect(
+					host=ip,
+					port=port,
+					user=node["user"],
+					password=node["password"],
+					db=self._database,
+					cursorclass=pymysql.cursors.DictCursor
+				)
+				with conn:
+					with conn.cursor() as cursor:
+						sql = f"SELECT COUNT(*) from {self._table}"
+						cursor.execute(sql)
+						result = cursor.fetchone()
+				count = re.match(r'^COUNT.*',list(result.keys())[0],flags=re.IGNORECASE)
+				if count is not None:
+					self._total_data_count[ip] = result[count.group()]
+				else:
+					raise Exception
+			except Exception as e:
+				print(e)
+				sys.exit(1)
+	def _dot_count(self,column_size,length):
+		count = int((column_size - length)/2)
+		remainder = (column_size - length)%2
+		return count,remainder
+	def _draw(self,string,count):
+		for _ in range(count):
+			print(string,end="")
+
 	# Show amount of data ratio before and after
 	def _before_after(self):
-		for ip in self._steal_ip_count.keys():
-			print(f"{ip}: {self._steal_ip_count}")
+		self._get_allnode_data_count()
+
+		allnode_ip = list()
+		allnode_updown = dict()
+		for node in self._new_iphashs:
+			allnode_ip.append(node["ip"])
+
+		# Before
+		termcolumn = shutil.get_terminal_size().columns
+		before_len = len("before")
+		after_len = len("after")
+		count,remainder = self._dot_count(termcolumn,before_len)
+		self._draw("-",count)
+		print("before",end="")
+		self._draw("-",count)
+		if remainder:
+			print("-")
+
+		for ip in allnode_ip:
+			print("|",end="")
+			before = self._total_data_count[ip]
+			allnode_updown[ip] = before
+			string = f"{ip}: {before}"
+			count,remainder = self._dot_count(termcolumn-2,len(string))
+			self._draw(" ",count)
+			print(string,end="")
+			self._draw(" ",count)
+			if remainder:
+				print("",end="")
+			print("|")
+			
+		self._draw("-",termcolumn)
+
+		# After
+		count,remainder = self._dot_count(termcolumn,after_len)
+		self._draw("-",count)
+		print("after",end="")
+		self._draw("-",count)
+		if remainder:
+			print("-")
+
+		for ip in allnode_ip:
+			print("|",end="")
+			if ip == self.insert_ip:
+				after = self._total_data_count[ip] + self.steal_len
+			else:
+				after = self._total_data_count[ip] - self._steal_ip_count[ip]
+			gap = allnode_updown[ip] - after
+			string = f"{ip}: {after}"
+			stringlen = len(string)
+			if gap > 0:
+				string = f"{ip}: \033[31m{after}\033[0m"
+			elif gap == 0:
+				string = f"{ip}: {after}"
+			else:
+				string = f"{ip}: \033[34m{after}\033[0m"
+			count,remainder = self._dot_count(termcolumn-2,stringlen)
+			self._draw(" ",count)
+			print(string,end="")
+			self._draw(" ",count)
+			if remainder:
+				print(" ",end="")
+			print("|")
+
+		self._draw("-",termcolumn)
+
+		print("")
+
+		# If choise not to send, end.
+		if not choice.insert_ok():
+			print("Data was not moved from Existed node to Added node.")
+			sys.exit(1)
 
 	@property
 	def columns(self):
@@ -616,11 +723,17 @@ class MySQLAddNode(test.MySQLConsistency):
 	# Steal,Insert,Delete
 	def sid(self,script=True,update=True):
 		steal_data = self.steal_data()
-		print("============== Steal Dataset Counter =================")
-		for key in self._steal_dataset.keys():
-			print(f"{key} => {len(self._steal_dataset[key])}")
+		if len(self._steal_dataset.keys()) == 0:
+			print(f"No Data should be sent to new added node. Already, has already been sent.")
+			sys.exit(1)
+#		else:
+#			print("============== Steal Dataset Counter =================")
+#			for key in self._steal_dataset.keys():
+#				print(f"{key} => {len(self._steal_dataset[key])}")
 
 		self._before_after()
+
+		sys.exit(1)
 
 		res = self.insert_data()
 		if self.contest_insert():
