@@ -1,11 +1,26 @@
 import pymysql
 import sys
+import shutil
 
 def pinger(f):
+	terminal_size = shutil.get_terminal_size()
+	terminal_columns = terminal_size.columns
+	ping=" PING "
+	length=len(ping)
+
 	def _wrapper(*args,**kwargs):	
-		print("+++++++++++++++ PING +++++++++++++++")
+		for _ in range(int((terminal_columns-length)/2)):
+			print("+",end='')
+		print(ping,end='')
+		for _ in range(int((terminal_columns-length)/2)):
+			print("+",end='')
+		if (terminal_columns-length)%2:
+			print("+",end='')
+		print("")
 		f(*args,**kwargs)
-		print("++++++++++++++++++++++++++++++++++++")
+		for _ in range(terminal_columns):
+			print("+",end='')
+		print("")
 	return _wrapper
 
 @pinger

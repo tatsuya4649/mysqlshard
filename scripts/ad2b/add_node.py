@@ -21,7 +21,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		hash_column,
 		database,
 		table,
-		columns,
 		yaml_path="ip.yaml",
 		virtual_count=100,
 		_DEBUG=False,
@@ -45,7 +44,6 @@ class MySQLAddNode(test.MySQLConsistency):
 			self._notice = None
 		self._notice_args = notice_args
 		self._notice_kwargs = notice_kwargs
-		self._columns = columns
 		self._database = database
 		self._table = table
 		if not self.ip_check(ip):
@@ -56,9 +54,7 @@ class MySQLAddNode(test.MySQLConsistency):
 			self._exists_iphashs = self._parse_yaml(yaml_path)
 		except FileNotFoundError as e:
 			raise FileNotFoundError
-#		print(f"Add Nodes:\n{ip}")
-#		print(f"Exists Nodes:\n{self._exists_iphashs}")
-#		print("================================")
+
 		add_node_ip = ip
 		add_node_hash = con.hash(add_node_ip.encode("utf-8"))
 		self._add_node_dict = dict()
@@ -73,6 +69,17 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._add_node_dict["password"] = password
 
 		ping.ping(ip,port,user,password,self._database)
+
+		# get scheme
+		self._columns = clms.MySQLColumns(
+			ip=add_node_ip,
+			port=port,
+			database=self._database,
+			table=self._table,
+			user=user,
+			password=password
+		)
+
 		new_iphashs = copy.deepcopy(self._exists_iphashs)
 		new_iphashs.append(self._add_node_dict)
 		self._new_iphashs = parse.sort(new_iphashs)
@@ -651,8 +658,7 @@ def main():
 
 	args = parser.parse_args()
 
-	columns = clms.Columns("id","username","hash_username","comment","start")
-	addnode = MySQLAddNode(args.ip,args.port,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"],secret_once=True)
+	addnode = MySQLAddNode(args.ip,args.port,"hash_username","sharding","user",args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"],secret_once=True)
 
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")
