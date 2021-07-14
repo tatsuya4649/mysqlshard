@@ -6,14 +6,37 @@ import copy
 import pymysql
 import test
 import choice
+import userpass
 import notice
+import ping
 import columns as clms
 from algo import con
 import time
 
 class MySQLAddNode(test.MySQLConsistency):
-	def __init__(self,ip,port,hash_column,database,table,columns,yaml_path="ip.yaml",virtual_count=100,_DEBUG=False,funcpath=None,notice_args=[],notice_kwargs={}):
+	def __init__(
+		self,
+		ip,
+		port,
+		hash_column,
+		database,
+		table,
+		columns,
+		yaml_path="ip.yaml",
+		virtual_count=100,
+		_DEBUG=False,
+		funcpath=None,
+		notice_args=[],
+		notice_kwargs={},
+		user=None,
+		password=None,
+		secret=False,
+		secret_once=False,
+		ping_interval=1
+	):
 		super().__init__(ip,database,table)
+		if not isinstance(port,int):
+			raise ValueError("PORT number must be int")
 		if not isinstance(columns,clms.Columns):
 			raise TypeError("column argument's type  must be Columns")
 		if funcpath is not None:
@@ -33,15 +56,23 @@ class MySQLAddNode(test.MySQLConsistency):
 			self._exists_iphashs = self._parse_yaml(yaml_path)
 		except FileNotFoundError as e:
 			raise FileNotFoundError
-		print(f"Add Nodes:\n{ip}")
-		print(f"Exists Nodes:\n{self._exists_iphashs}")
-		print("================================")
+#		print(f"Add Nodes:\n{ip}")
+#		print(f"Exists Nodes:\n{self._exists_iphashs}")
+#		print("================================")
 		add_node_ip = ip
 		add_node_hash = con.hash(add_node_ip.encode("utf-8"))
 		self._add_node_dict = dict()
 		self._add_node_dict["ip"] = add_node_ip
 		self._add_node_dict["port"] = port
 		self._add_node_dict["hash"] = add_node_hash
+		if user is None or password is None  or secret:
+			res = userpass.secret_userpass(add_node_ip,port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
+			user = res["user"]
+			password = res["password"]
+		self._add_node_dict["user"] = user
+		self._add_node_dict["password"] = password
+
+		ping.ping(ip,port,user,password,self._database)
 		new_iphashs = copy.deepcopy(self._exists_iphashs)
 		new_iphashs.append(self._add_node_dict)
 		self._new_iphashs = parse.sort(new_iphashs)
@@ -49,6 +80,25 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._ipport = dict()
 		for node in self._new_iphashs:
 			self._ipport[node["ip"]] = node["port"]
+		self._ipuser = dict()
+		self._ippass = dict()
+		userpassstr = f"\033[31mPlease input exists node database user and password\033[0m\nNOTICE: if trouble to input,\"secret=True\" in init function and insert user and password into yaml"
+		for node in self._new_iphashs:
+			time.sleep(ping_interval)
+			if ("user" not in node.keys() or "password" not in node.keys() or node["user"] is None or node["password"] is None or secret) and (secret_once is False):
+				res = userpass.secret_userpass(node["ip"],node["port"],self._database,userpassstr)
+				node["user"] = res["user"]
+				node["password"] = res["password"]
+			elif secret_once:
+				node["user"] = user
+				node["password"] = password
+			self._ipuser[node["ip"]] = node["user"]
+			self._ippass[node["ip"]] = node["password"]
+			ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
+
+		print(self._ipuser)
+		print(self._ippass)
+		sys.exit(1)
 
 		self._add_node_index = new_iphashs.index(self._add_node_dict)
 		self._conn = None
@@ -318,12 +368,7 @@ class MySQLAddNode(test.MySQLConsistency):
 					self._steal_dataset[column].add(data[column])
 	# Steal Data From Next
 	def steal_data(
-		self,
-		database,
-		table,
-		port=3306,
-		user='root',
-		password='mysql',
+		self
 	):
 		for ip in self.steal_ip:
 			host = ip
@@ -334,15 +379,15 @@ class MySQLAddNode(test.MySQLConsistency):
 			host = ip
 			self._conn = pymysql.connect(
 				host=host,
-				port=port,
-				user=user,
-				password=password,
-				database=database,
+				port=self._ipport[ip],
+				user=self._ipuser[ip],
+				password=self._ippassword,
+				database=self._database,
 				cursorclass=pymysql.cursors.DictCursor
 			)
 			try:
 				with self._conn.cursor() as cursor:
-					sql = f"SELECT * FROM {table} WHERE {query}"
+					sql = f"SELECT * FROM {self._table} WHERE {query}"
 					#print(f"{sql}")
 					cursor.execute(sql)
 					results = cursor.fetchall()
@@ -366,9 +411,7 @@ class MySQLAddNode(test.MySQLConsistency):
 	# Delete Steal Data
 	def delete_data(
 		self,
-		user='root',
-		password='mysql',
-		wait_printtime=10,
+		wait_printtime=10
 	):
 		res_list = list()
 		self._delete_dataset_init()
@@ -376,8 +419,8 @@ class MySQLAddNode(test.MySQLConsistency):
 			self._conn = pymysql.connect(
 				host=ip,
 				port=self._ipport[ip],
-				user=user,
-				password=password,
+				user=self._ipuser[ip],
+				password=self._ippass[ip],
 				db=self._database,
 				cursorclass=pymysql.cursors.DictCursor
 			)
@@ -434,14 +477,12 @@ class MySQLAddNode(test.MySQLConsistency):
 				raise test.ConsistencyUnmatchError("insert dataset unmatch to steal dataset")
 	def insert_redo(
 		self,
-		user='root',
-		password='mysql',
 	):
 		self._conn = pymysql.connect(
 			host=self.insert_ip,
 			port=self._insert_port,
-			user=user,
-			password=password,
+			user=self._ipuser[self.insert_ip],
+			password=self._ippass[self._insert_ip],
 			db=self._database,
 			cursorclass=pymysql.cursors.DictCursor
 		)
@@ -469,17 +510,15 @@ class MySQLAddNode(test.MySQLConsistency):
 	# Insert New Data
 	def insert_data(
 		self,
-		user='root',
-		password='mysql',
 		wait_printtime=10, # waiting for confirming Error 
 	):
 		# Delete Add Host
 		host = self.add_ip
 		self._conn = pymysql.connect(
 			host=host,
-			port=port,
-			user=user,
-			password=password,
+			port=self._ipport[host],
+			user=self._ipuser[host],
+			password=self._ippass[host],
 			database=self._database,
 			cursorclass=pymysql.cursors.DictCursor
 		)
@@ -534,17 +573,14 @@ class MySQLAddNode(test.MySQLConsistency):
 	def part_insert_date(
 		self,
 		index_list,
-		port=3306,
-		user='root',
-		password='mysql'
 	):
 		# Delete Add Host
 		host = self.add_ip
 		self._conn = pymysql.connect(
 			host=host,
-			port=port,
-			user=user,
-			password=password,
+			port=self._ipport[host],
+			user=self._ipuser[host],
+			password=self._ippass[host],
 			database=self._database,
 			cursorclass=pymysql.cursors.DictCursor
 		)
@@ -564,13 +600,6 @@ class MySQLAddNode(test.MySQLConsistency):
 				time.sleep(wait_printtime)
 		self._conn = None
 		return res_list
-	@property
-	def error_insert(self):
-		self._check_i()
-		return [ i for i,x in enumerate(self._insert_res) if x == 0]
-	@property
-	def error_delete(self,res_list):
-		pass
 
 	@property
 	def columns(self):
@@ -617,13 +646,13 @@ class MySQLAddNode(test.MySQLConsistency):
 def main():
 	parser = argparse.ArgumentParser(description="Add node from IP Address")
 	parser.add_argument("ip",help="IP Address of Node")
-	parser.add_argument("port",help="Port Number of Node")
+	parser.add_argument("port",help="Port Number of Node",type=int)
 	parser.add_argument("yaml_path",help="Exists IP Addresses file path")
 
 	args = parser.parse_args()
 
 	columns = clms.Columns("id","username","hash_username","comment","start")
-	addnode = MySQLAddNode(args.ip,args.port,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"])
+	addnode = MySQLAddNode(args.ip,args.port,"hash_username","sharding","user",columns,args.yaml_path,_DEBUG=True,funcpath="ls",notice_args=["-l"],secret_once=True)
 
 	print(f"steal IP: {addnode.steal_ip}")
 	print(f"delete IP: {addnode.delete_ip}")

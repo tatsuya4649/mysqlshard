@@ -10,6 +10,7 @@ def parse_yaml(path):
 	# Sort by NodeID
 	lists = sorted(ips,key=lambda x:x["hash"])
 	return lists
+
 def sort(lists):
 	return sorted(lists,key=lambda x:x["hash"])
 
