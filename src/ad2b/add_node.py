@@ -111,8 +111,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._add_node_index = new_iphashs.index(self._add_node_dict)
 		self._conn = None
 		self._steal_data = None
-		self._virtual_nodecount=virtual_nodecount
-		self._virtual_node(self.virtual_nodecount)
 		self._hash_column = hash_column
 		self._DEBUG = _DEBUG
 		self._steal_ip = set()
@@ -121,6 +119,8 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._delete_ip = set()
 		self._total_data_count = dict()
 
+		self._virtual_nodecount=virtual_nodecount
+		self._virtual_node(self._virtual_nodecount)
 		self._ip_query = self._get_steal_query()
 
 	@property
@@ -153,7 +153,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._virtual_iphashs = virtual_iphashs
 	
 	# return array of dict(All IP and virtual hashs list)
-	def _virtual_data(self):
+	def _virtual_org(self):
 		if self._virtual_iphashs is None:
 			raise ValueError("must have _virtual_iphashs. hints: call _virtual_node function.")
 		virtuals = list()
@@ -221,7 +221,7 @@ class MySQLAddNode(test.MySQLConsistency):
 				if threshold < h:
 					results.append(h)
 			else:
-				if h < smallest and threshold < h:
+				if h < smallest and threshold <= h:
 					results.append(h)
 		if len(results) == 0:
 			return None
@@ -234,7 +234,7 @@ class MySQLAddNode(test.MySQLConsistency):
 				if threshold > h:
 					results.append(h)
 			else:
-				if h > biggest and threshold > h:
+				if h > biggest and threshold >= h:
 					results.append(h)
 		if len(results) == 0:
 			return None
@@ -283,6 +283,7 @@ class MySQLAddNode(test.MySQLConsistency):
 			if smallest_ip is None or smallest_ip == self.add_ip:
 				rem_lists.append(j)
 				continue
+
 			if smallest_ip not in res_dict.keys():
 				res_dict[smallest_ip] = list()
 			more = ""
@@ -303,54 +304,56 @@ class MySQLAddNode(test.MySQLConsistency):
 
 	# Get dict (key IP Address,value Query)
 	def _get_steal_query(self):
-		virtuals = self._virtual_data()
+		virtuals = self._virtual_org()
 		
+		# dict(key: ip,hashs)
 		add_virtual = None
 		
-		# initial index => 0
-		virtual_index = dict()
-		virtualb_index = dict()
-		for virtual in virtuals:
-			virtual_index[virtual["ip"]] = 0
-			virtualb_index[virtual["ip"]] = 0
-		# delete addnode index
+#		# initial index => 0
+#		virtual_index = dict()
+#		virtualb_index = dict()
+#		for virtual in virtuals:
+#			virtual_index[virtual["ip"]] = 0
+#			virtualb_index[virtual["ip"]] = 0
+#		# delete addnode index
 		for virtual in virtuals:
 			if virtual["ip"] == self.add_ip:
 				add_virtual = virtual
-		del virtual_index[self.add_ip]
-		del virtualb_index[self.add_ip]
-
+#		del virtual_index[self.add_ip]
+#		del virtualb_index[self.add_ip]
+#
 		nonaddvirs = copy.deepcopy(virtuals)
 		for j in range(len(nonaddvirs)):
 			if nonaddvirs[j]["ip"] == self.add_ip:
 				nonaddvirs.pop(j)
 				break
 
-		# raise Exception
+#		# raise Exception
 		if add_virtual is None:
-			raise ValueError("not found added node data from addnode._virtual_data")
-		if len(virtual_index.keys()) == 0:
-			raise ValueError("virtual_index must have one or more elements")
-		if len(virtualb_index.keys()) == 0:
-			raise ValueError("virtualb_index must have one or more elements")
+			raise ValueError("not found added node data from addnode._virtual_org")
+#		if len(virtual_index.keys()) == 0:
+#			raise ValueError("virtual_index must have one or more elements")
+#		if len(virtualb_index.keys()) == 0:
+#			raise ValueError("virtualb_index must have one or more elements")
 		if len(nonaddvirs) == 0:
 			raise ValueError("nonaddvirs must have one or more elements")
 		if self._hash_column is None:
 			raise ValueError("not found hash_column used in query")
 
 		# query count
-		scount = 0
-		bcount = 0
+#		scount = 0
+#		bcount = 0
 		# total query
 		query = ""
-		hashcolumn = self._hash_column
 		# per add_virtual hash value
 		rem_lists = self.virtualhash(add_virtual,nonaddvirs)
+		
 		while len(rem_lists) != 0:
 			rem_lists,query_dict = self.virtualhash(add_virtual,nonaddvirs)
 			rem_lists.reverse()
 			for i in rem_lists:
 				add_virtual["hashs"].pop(i)
+
 		if not 'query_dict' in locals():
 			raise AttributeError("not found query_dict")
 
@@ -584,6 +587,7 @@ class MySQLAddNode(test.MySQLConsistency):
 	def part_insert_date(
 		self,
 		index_list,
+		wait_printtime=10,
 	):
 		# Delete Add Host
 		host = self.add_ip
