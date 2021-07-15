@@ -46,6 +46,6 @@ python ad2b 	\
 		--secret_once \
 		--user $USER \
 		--password $PASSWORD \
-		-v 100 \
+		-v 10 \
 
 

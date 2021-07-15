@@ -329,9 +329,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		# Get From Exists Node
 		vhip_len = len(self._virtual_haship)
 		for i in range(vhip_len):
-			print(haship)
 			haship = self._virtual_haship[i]
-		sys.exit(1)
 		
 		exists_hashs = list()
 		for node in self._exists_iphashs:
@@ -381,10 +379,13 @@ class MySQLAddNode(test.MySQLConsistency):
 		self
 	):
 		self._steal_ip_count = dict()
+		for ip in self.steal_ip:
+			self._steal_ip_count[ip] = 0
 		self._steal_dataset_init()
 		for trans in self._total_transaction:
 			ip = trans["steal_ip"]
-			query = f"\"{trans['minhash']}\" < {self._hash_column} OR \"{trans['maxhash']}\" >= {self._hash_column}"
+			query = f"\"{trans['minhash']}\" < {self._hash_column} AND \"{trans['maxhash']}\" >= {self._hash_column}"
+			print(query)
 			# Steal Next Host
 			self._conn = pymysql.connect(
 				host=ip,
@@ -400,7 +401,7 @@ class MySQLAddNode(test.MySQLConsistency):
 					cursor.execute(sql)
 					results = cursor.fetchall()
 					trans["steal_data"] = results
-					self._steal_ip_count[ip] = len(results)
+					self._steal_ip_count[ip] += len(results)
 					self._steal_dataset_set(results)
 			except Exception as e:
 				print(e)
