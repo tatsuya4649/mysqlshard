@@ -1,4 +1,6 @@
 .*.swp
+.*.swn
+.*.swo
 */data/*
 build
 dist
