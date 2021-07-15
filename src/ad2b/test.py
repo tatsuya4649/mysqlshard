@@ -2,6 +2,8 @@ import hashlib
 import ip as ipm
 import pymysql
 
+class ConsistencyError(Exception):
+	pass
 class ConsistencyInsertError(Exception):
 	def __init__(self,str,err_count):
 		super().__init__(str)

@@ -1,4 +1,5 @@
 import argparse
+from hashlib import new
 import parse
 import re
 import sys
@@ -82,9 +83,11 @@ class MySQLAddNode(test.MySQLConsistency):
 		)
 
 		new_iphashs = copy.deepcopy(self._exists_iphashs)
+		for node in new_iphashs:
+			if node["ip"] == self._add_node_dict["ip"]:
+				raise ValueError("already addkd node in exists node")
 		new_iphashs.append(self._add_node_dict)
 		self._new_iphashs = parse.sort(new_iphashs)
-
 		self._ipport = dict()
 		self._ipuser = dict()
 		self._ippass = dict()
@@ -108,9 +111,9 @@ class MySQLAddNode(test.MySQLConsistency):
 				self._ipuser[add_node_ip] = user 
 				self._ippass[add_node_ip] = password 
 
-		self._add_node_index = new_iphashs.index(self._add_node_dict)
+		self._add_node_index = self._new_iphashs.index(self._add_node_dict)
 		self._conn = None
-		self._steal_data = None
+		self._steal_data = list()
 		self._hash_column = hash_column
 		self._DEBUG = _DEBUG
 		self._steal_ip = set()
@@ -121,7 +124,9 @@ class MySQLAddNode(test.MySQLConsistency):
 
 		self._virtual_nodecount=virtual_nodecount
 		self._virtual_node(self._virtual_nodecount)
-		self._ip_query = self._get_steal_query()
+		self._ip_query = dict()
+		self._total_transaction = self._real_steal_query()
+		self._steal_dataset = dict()
 
 	@property
 	def exists_iphashs(self):
@@ -140,6 +145,7 @@ class MySQLAddNode(test.MySQLConsistency):
 	def _virtual_node(self,count):
 		total = len(self._new_iphashs)
 		virtual_iphashs = copy.deepcopy(self._new_iphashs)
+		virtual_haship = dict()
 		while total < count:
 			for obj in self._new_iphashs:
 				ip = obj["ip"]
@@ -148,8 +154,10 @@ class MySQLAddNode(test.MySQLConsistency):
 				virtual_dict = dict()
 				virtual_dict["ip"] = ip
 				virtual_dict["hash"] = virtual_hash
+				virtual_haship[virtual_hash] = ip
 				virtual_iphashs.append(virtual_dict)
 				total += 1
+		self._virtual_haship = sorted(virtual_haship.items())
 		self._virtual_iphashs = virtual_iphashs
 	
 	# return array of dict(All IP and virtual hashs list)
@@ -302,97 +310,84 @@ class MySQLAddNode(test.MySQLConsistency):
 				print(f"{from_str}{to_str}")
 		return rem_lists,res_dict
 
-	# Get dict (key IP Address,value Query)
-	def _get_steal_query(self):
+	def _have_real_node(self,hash,exih_order):
+		for j in range(len(exih_order)):
+			if exih_order[j]["hash"] > hash:
+				return exih_order[j],exih_order[j-1]
+		return exih_order[0],exih_order[-1]
+
+	def _real_steal_query(self):
+		HASH_INDEX=0
+		IP_INDEX=1
 		virtuals = self._virtual_org()
-		
-		# dict(key: ip,hashs)
-		add_virtual = None
-		
-#		# initial index => 0
-#		virtual_index = dict()
-#		virtualb_index = dict()
-#		for virtual in virtuals:
-#			virtual_index[virtual["ip"]] = 0
-#			virtualb_index[virtual["ip"]] = 0
-#		# delete addnode index
-		for virtual in virtuals:
-			if virtual["ip"] == self.add_ip:
-				add_virtual = virtual
-#		del virtual_index[self.add_ip]
-#		del virtualb_index[self.add_ip]
-#
-		nonaddvirs = copy.deepcopy(virtuals)
-		for j in range(len(nonaddvirs)):
-			if nonaddvirs[j]["ip"] == self.add_ip:
-				nonaddvirs.pop(j)
-				break
-
-#		# raise Exception
-		if add_virtual is None:
-			raise ValueError("not found added node data from addnode._virtual_org")
-#		if len(virtual_index.keys()) == 0:
-#			raise ValueError("virtual_index must have one or more elements")
-#		if len(virtualb_index.keys()) == 0:
-#			raise ValueError("virtualb_index must have one or more elements")
-		if len(nonaddvirs) == 0:
-			raise ValueError("nonaddvirs must have one or more elements")
-		if self._hash_column is None:
-			raise ValueError("not found hash_column used in query")
-
-		# query count
-#		scount = 0
-#		bcount = 0
-		# total query
-		query = ""
-		# per add_virtual hash value
-		rem_lists = self.virtualhash(add_virtual,nonaddvirs)
-		
-		while len(rem_lists) != 0:
-			rem_lists,query_dict = self.virtualhash(add_virtual,nonaddvirs)
-			rem_lists.reverse()
-			for i in rem_lists:
-				add_virtual["hashs"].pop(i)
-
-		if not 'query_dict' in locals():
-			raise AttributeError("not found query_dict")
-
+		# Real node IP(key),HASH(value) list sorted in reverse
+		exih_order = sorted(self._exists_iphashs,key=lambda x:x["hash"],reverse=False)
 		ip_query = dict()
-		for ip in query_dict.keys():
-			query = ""
-			for i in range(len(query_dict[ip])):
-				query += query_dict[ip][i]
-				if i < len(query_dict[ip])-1:
-					query += "OR"
-			ip_query[ip] = query
-		return ip_query
+		for haship in self._virtual_haship:
+			ip_query[haship[IP_INDEX]] = list()
+
+		# Get From Exists Node
+		vhip_len = len(self._virtual_haship)
+		for i in range(vhip_len):
+			print(haship)
+			haship = self._virtual_haship[i]
+		sys.exit(1)
+		
+		exists_hashs = list()
+		for node in self._exists_iphashs:
+			exists_hashs.append(node["hash"])
+
+		total_transaction = list()
+		pre_trans = dict()
+		for i in range(vhip_len):
+			haship = self._virtual_haship[i]
+			if haship[HASH_INDEX] in exists_hashs:
+				continue
+			nowhaveih,previh = self._have_real_node(haship[HASH_INDEX],exih_order)
+			trans = dict()
+			if i == 0 or previh is None:
+				trans["minhash"] = previh["hash"]
+				trans["maxhash"] = haship[HASH_INDEX]
+			else:
+				trans["minhash"] = pretrans["maxhash"]
+				trans["maxhash"] = haship[HASH_INDEX]
+			trans["steal_ip"] = nowhaveih["ip"]
+			trans["insert_ip"] = haship[IP_INDEX]
+			if trans["steal_ip"] != trans["insert_ip"]:
+				total_transaction.append(trans)
+			pretrans = trans
+		return total_transaction
 
 	@property
 	def steal_ip(self):
-		return list(self._ip_query.keys())
+		steal_ips = list()
+		for trans in self._total_transaction:
+			if trans["steal_ip"] not in steal_ips:
+				steal_ips.append(trans["steal_ip"])
+		return steal_ips
+#		return list(self._ip_query.keys())
 	def _steal_dataset_init(self):
-		if hasattr(self,"_steal_data") and self._steal_data is not None and len(self._steal_data) != 0:
-			for column in self._steal_data[0]:
-				self._steal_dataset[column] = set()
-	def _steal_dataset_set(self):
-		if hasattr(self,"_steal_data") and self._steal_data is not None and len(self._steal_data) != 0:
-			for data in self._steal_data:
+		for column in self._columns:
+			self._steal_dataset[column] = set()
+	def _steal_dataset_set(self,results):
+			for data in results: 
 				for column in data.keys():
-					self._steal_dataset[column].add(data[column])
+					if column in self._steal_dataset.keys():
+						self._steal_dataset[column].add(data[column])
+					else:
+						raise KeyError(f"_steal_dataset must have column({column})")
 	# Steal Data From Next
 	def steal_data(
 		self
 	):
 		self._steal_ip_count = dict()
-		for ip in self.steal_ip:
-			host = ip
-			query = self._ip_query[ip]
-			#print("----------------------------------------")
-			#print(f"Select: From Host \"{host}\", Port \"{port}\",Database \"{database}\", Table \"{table}\", Execute Query \"{query}\"")
+		self._steal_dataset_init()
+		for trans in self._total_transaction:
+			ip = trans["steal_ip"]
+			query = f"\"{trans['minhash']}\" < {self._hash_column} OR \"{trans['maxhash']}\" >= {self._hash_column}"
 			# Steal Next Host
-			host = ip
 			self._conn = pymysql.connect(
-				host=host,
+				host=ip,
 				port=self._ipport[ip],
 				user=self._ipuser[ip],
 				password=self._ippass[ip],
@@ -404,16 +399,15 @@ class MySQLAddNode(test.MySQLConsistency):
 					sql = f"SELECT * FROM {self._table} WHERE {query}"
 					cursor.execute(sql)
 					results = cursor.fetchall()
-					self._steal_data = results
-					self._steal_ip_count[host] = len(results)
+					trans["steal_data"] = results
+					self._steal_ip_count[ip] = len(results)
+					self._steal_dataset_set(results)
 			except Exception as e:
-				self._steal_data = None
+				print(e)
 			finally:
 				self._conn = None
 		self.steal()
-		self._steal_dataset_init()
-		self._steal_dataset_set()
-			
+
 		return self._steal_data
 	@property
 	def delete_ip(self):
@@ -567,7 +561,14 @@ class MySQLAddNode(test.MySQLConsistency):
 
 	@property
 	def steal_len(self):
-		return len(self._steal_data)
+		total_steal = 0
+		for node in self._new_iphashs:
+			ip = node["ip"]
+			try:
+				total_steal += self._steal_ip_count[ip]
+			except KeyError as e:
+				total_steal += 0
+		return total_steal
 	@property
 	def insert_len(self):
 		if len(self._insert_res) == 0:
@@ -656,8 +657,10 @@ class MySQLAddNode(test.MySQLConsistency):
 
 		allnode_ip = list()
 		allnode_updown = dict()
+		total_datacount = 0
 		for node in self._new_iphashs:
 			allnode_ip.append(node["ip"])
+			total_datacount += self._total_data_count[node["ip"]]
 
 		# Before
 		termcolumn = shutil.get_terminal_size().columns
@@ -693,12 +696,17 @@ class MySQLAddNode(test.MySQLConsistency):
 		if remainder:
 			print("-")
 
+		aftertotal_datacount = 0
 		for ip in allnode_ip:
 			print("|",end="")
 			if ip == self.insert_ip:
 				after = self._total_data_count[ip] + self.steal_len
 			else:
-				after = self._total_data_count[ip] - self._steal_ip_count[ip]
+				try:
+					after = self._total_data_count[ip] - self._steal_ip_count[ip]
+				except KeyError:
+					after = self._total_data_count[ip]
+			aftertotal_datacount += after
 			gap = allnode_updown[ip] - after
 			string = f"{ip}: {after}"
 			stringlen = len(string)
@@ -720,6 +728,8 @@ class MySQLAddNode(test.MySQLConsistency):
 
 		print("")
 
+		if total_datacount != aftertotal_datacount:
+			raise test.ConsistencyError("difference total data and after total data.")
 		# If choise not to send, end.
 		if not choice.insert_ok():
 			print("Data was not moved from Existed node to Added node.")
@@ -735,10 +745,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		if len(self._steal_dataset.keys()) == 0:
 			print(f"No Data should be sent to new added node. Already, has already been sent.")
 			sys.exit(1)
-#		else:
-#			print("============== Steal Dataset Counter =================")
-#			for key in self._steal_dataset.keys():
-#				print(f"{key} => {len(self._steal_dataset[key])}")
 
 		self._before_after()
 
@@ -767,4 +773,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		new_iphashs.append(addnode_dict)
 		parse.update_yaml(self._yaml_path,new_iphashs)
 
+	def _test_conshash(self):
+		pass
 

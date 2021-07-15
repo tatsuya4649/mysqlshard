@@ -30,7 +30,7 @@ if [ -n "$NOTICE" ]; then
 fi
 NODEIP=$(docker network inspect $NODE | jq -r ".[].IPAM.Config[].Gateway")
 
-echo "Node IP Address: $NODEIP"
+echo "ADD Node IP Address: $NODEIP"
 cat $YAMLFILE
 
 USER=root
@@ -46,6 +46,6 @@ python ad2b 	\
 		--secret_once \
 		--user $USER \
 		--password $PASSWORD \
-		-v 1000 \
+		-v 100 \
 
 
