@@ -1,4 +1,5 @@
 import argparse
+from pickle import ADDITEMS
 import parse
 import re
 import sys
@@ -13,6 +14,11 @@ import columns as clms
 from algo import con
 import time
 import shutil
+from enum import Enum
+
+class NodeMode(Enum):
+	ADD			= 1			# New node add cluster
+	DELETE		= 2			# Exists node delete from cluster
 
 class MySQLAddNode(test.MySQLConsistency):
 	def __init__(
@@ -34,6 +40,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		ping_interval=1,
 		virtual_nodecount=100,
 		require_reshard=True,
+		mode=NodeMode.ADD,			# how move data for node
 	):
 		super().__init__(ip,database,table)
 		if not isinstance(port,int):
@@ -47,6 +54,13 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._database = database
 		self._table = table
 		self._secret = secret
+
+		if mode == "add":
+			self._mode = NodeMode.ADD
+		elif mode == "delete":
+			self._mode = NodeMode.DELETE
+		else:
+			raise ValueError("mode must be 'add' or 'delete'")
 		# If require resharding, steal data from all real node
 		self._require_reshard = require_reshard
 		if not self.ip_check(ip):
@@ -69,25 +83,37 @@ class MySQLAddNode(test.MySQLConsistency):
 				node["hash"] = [con.hash(node["ip"].encode("utf-8"))]
 			if not isinstance(node["hash"],list):
 				raise TypeError("this YAML File is invalid in this program.(hash must be list)")
-			
-		add_node_ip = ip
-		add_node_hash = con.hash(add_node_ip.encode("utf-8"))
-		self._add_node_dict = dict()
-		self._add_node_dict["ip"] = add_node_ip
-		self._add_node_dict["port"] = port
-		self._add_node_dict["hash"] = [add_node_hash]
-		if user is None or password is None or secret:
-			res = userpass.secret_userpass(add_node_ip,port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
+		
+		if self._mode is NodeMode.ADD:
+			# if target node in yaml format, error
+			if len([x for x in self._exists_iphashs if x["ip"] == ip]) != 0:
+				raise ValueError("There are already target node in YAML file. target must be non exists node ip.")
+		elif self._mode is NodeMode.DELETE:
+			# if no target node in yaml format, error
+			if len([x for x in self._exists_iphashs if x["ip"] == ip]) == 0:
+				raise ValueError("There is no target node in YAML file. Because target node is delete from existed node, it must be in YAML file.")
+		
+		target_node_ip = ip
+		target_node_hash = con.hash(target_node_ip.encode("utf-8"))
+		self._target_node_dict = dict()
+		self._target_node_dict["ip"] = target_node_ip
+		self._target_node_dict["port"] = port
+		self._target_node_dict["hash"] = [target_node_hash]
+		
+		if (self._mode is NodeMode.ADD and user is None or password is None or secret) or \
+			(self.mode is NodeMode.DELETE and len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x["password"] is not None]) == 0 or \
+				len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x ["password"] is not None]) == 0):
+			res = userpass.secret_userpass(target_node_ip,port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
 			user = res["user"]
 			password = res["password"]
-		self._add_node_dict["user"] = user
-		self._add_node_dict["password"] = password
+		self._target_node_dict["user"] = user
+		self._target_node_dict["password"] = password
 
 		ping.ping(ip,port,user,password,self._database)
 
 		# get scheme
 		self._columns = clms.MySQLColumns(
-			ip=add_node_ip,
+			ip=target_node_ip,
 			port=port,
 			database=self._database,
 			table=self._table,
@@ -98,9 +124,14 @@ class MySQLAddNode(test.MySQLConsistency):
 
 		new_iphashs = copy.deepcopy(self._exists_iphashs)
 		for node in new_iphashs:
-			if node["ip"] == self._add_node_dict["ip"]:
-				raise ValueError("already added node in exists node")
-		new_iphashs.append(self._add_node_dict)
+			if self._mode is NodeMode.ADD and node["ip"] == self._target_node_dict["ip"]:
+				raise ValueError("already target node in exists node")
+		
+		if self._mode is NodeMode.ADD:
+			new_iphashs.append(self._target_node_dict)
+		elif self.mode is NodeMode.DELETE:
+			new_iphashs.remove(self._target_node_dict)
+
 		# If resharding, delete virtual node
 		if require_reshard:
 			for node in self._exists_iphashs:
@@ -120,7 +151,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		iphashs_set = set()
 		for node in self._new_iphashs:
 			if node["ip"] in iphashs_set: continue
-			if node["ip"] != add_node_ip:
+			if node["ip"] != target_node_ip:
 				time.sleep(ping_interval)
 				if ("user" not in node.keys() or "password" not in node.keys() or node["user"] is None or node["password"] is None or secret) and (secret_once is False):
 					res = userpass.secret_userpass(node["ip"],node["port"],self._database,userpassstr)
@@ -134,12 +165,11 @@ class MySQLAddNode(test.MySQLConsistency):
 				ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
 				iphashs_set.add(node["ip"])
 			else:
-				self._ipuser[add_node_ip] = user 
-				self._ippass[add_node_ip] = password 
+				self._ipuser[target_node_ip] = user 
+				self._ippass[target_node_ip] = password 
 				iphashs_set.add(node["ip"])
 		
 		self._conn = None
-		self._steal_data = list()
 		self._hash_column = hash_column
 		self._DEBUG = _DEBUG
 		self._steal_ip = set()
@@ -170,26 +200,20 @@ class MySQLAddNode(test.MySQLConsistency):
 	# count: total node count(real node + virtual node)
 	def _virtual_node(self,count):
 		total = 0
-		for node in self._new_iphashs:
-			total += len(node["hash"])
 		virtual_iphashs = copy.deepcopy(self._new_iphashs)
 		virtual_haship = dict()
-
 		for obj in self._new_iphashs:
-			ip = obj["ip"]
+			total += len(obj["hash"])
 			for hash in obj["hash"]:
-				virtual_haship[hash] = ip
-
+				virtual_haship[hash] = obj["ip"]
 		if total < count:
 			while total < count:
 				for obj in virtual_iphashs:
-					ip = obj["ip"]
-					virtual_ip = f"{ip}{total}"
+					virtual_ip = f'{obj["ip"]}{total}'
 					virtual_hash = con.hash(virtual_ip.encode("utf-8"))
 					virtual_haship[virtual_hash] = obj["ip"]
 					obj["hash"].append(virtual_hash)
 					total += 1
-
 		self._virtual_haship = sorted(virtual_haship.items())
 		self._virtual_iphashs = virtual_iphashs
 	
@@ -200,14 +224,14 @@ class MySQLAddNode(test.MySQLConsistency):
 		for obj in self._virtual_iphashs:
 			obj["hash"].sort()
 	@property
-	def add_ip(self):
-		return self._add_node_dict["ip"]
+	def target_ip(self):
+		return self._target_node_dict["ip"]
 	@property
-	def add_port(self):
-		return self._add_node_dict["port"]
+	def target_port(self):
+		return self._target_node_dict["port"]
 	@property
-	def add_hash(self):
-		return self._add_node_dict["hash"]
+	def target_hash(self):
+		return self._target_node_dict["hash"]
 
 	def _have_real_node(self,hash,exih_order):
 		for j in range(len(exih_order)):
@@ -267,22 +291,21 @@ class MySQLAddNode(test.MySQLConsistency):
 			if trans["steal_ip"] not in steal_ips:
 				steal_ips.append(trans["steal_ip"])
 		return steal_ips
-	def _steal_dataset_init(self):
-		for column in self._columns:
-			self._steal_dataset[column] = set()
-	def _steal_dataset_set(self,results):
-			for data in results: 
-				for column in data.keys():
-					if column in self._steal_dataset.keys():
-						self._steal_dataset[column].add(data[column])
-					else:
-						raise KeyError(f"_steal_dataset must have column({column})")
+#	def _steal_dataset_init(self):
+#		for column in self._columns:
+#			self._steal_dataset[column] = set()
+#	def _steal_dataset_set(self,results):
+#			for data in results: 
+#				for column in data.keys():
+#					if column in self._steal_dataset.keys():
+#						self._steal_dataset[column].add(data[column])
+#					else:
+#						raise KeyError(f"_steal_dataset must have column({column})")
 	# Steal Data From Next
 	def steal_data(
 		self,
 		trans
 	):
-		self._steal_dataset_init()
 		ips = set()
 		ips.add(trans["steal_ip"])
 		if self._require_reshard:
@@ -315,20 +338,12 @@ class MySQLAddNode(test.MySQLConsistency):
 							trans["steal_data"].append(result)
 					trans["steal_len"]  = len(trans["steal_data"])
 					self._steal_ip_count[ip] += len(results)
-					self._steal_dataset_set(results)
 			except Exception as e:
 				print(e)
 			finally:
 				self._conn = None
+		return len(trans["steal_data"])
 
-		return self._steal_data
-	@property
-	def delete_ip(self):
-		return list(self._ip_query.keys())
-	def _delete_dataset_init(self):
-		if len(self._steal_data) != 0:
-			for column in self._steal_data[0]:
-				self._delete_dataset[column] = set()
 	# Delete Steal Data
 	def delete_data(
 		self,
@@ -336,7 +351,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		wait_printtime=1,
 	):
 		res_list = list()
-		self._delete_dataset_init()
 		steal_ip = trans["steal_ip"]
 		ips = list()
 		ips += list(trans["steal_fake"].keys())
@@ -376,9 +390,6 @@ class MySQLAddNode(test.MySQLConsistency):
 			if trans["insert_ip"] not in insert_ips:
 				insert_ips.append(trans["insert_ip"])
 		return insert_ips
-	def _insert_dataset_init(self):
-			for column in self._columns:
-				self._insert_dataset[column] = set()
 	
 	def _init_contest_data(self):
 		self._insert_res = list()
@@ -393,7 +404,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		wait_printtime=1, # waiting for confirming Error 
 	):
 		res_list = list()
-		self._insert_dataset_init()
 		host = trans["insert_ip"]
 		self._conn = pymysql.connect(
 			host=host,
@@ -428,8 +438,7 @@ class MySQLAddNode(test.MySQLConsistency):
 						self._conn.begin()
 						res = cursor.execute(sql)
 						self._conn.commit()
-						for column in insert_data.keys():
-							self._insert_dataset[column].add(insert_data[column])
+
 						res_list.append(res)
 						complete_list.append(insert_data)
 				except Exception as e:
@@ -543,8 +552,8 @@ class MySQLAddNode(test.MySQLConsistency):
 				redo_trans["complete"] = False
 
 				try:
-					self.steal_data(redo_trans)
-					if len(self._steal_dataset.keys()) == 0:
+					steal_len = self.steal_data(redo_trans)
+					if steal_len == 0:
 						continue
 					self.insert_data(redo_trans)
 					self.delete_data(redo_trans)
@@ -556,7 +565,7 @@ class MySQLAddNode(test.MySQLConsistency):
 					print("\033[31mOccur Error in Redo\033[0m")
 					self._redo_errhandle(redo_trans)
 				finally:
-					self._steal_dataset_init()
+					pass
 		print("Back to be state of before of sharding.")
 		sys.exit(1)
 
@@ -589,8 +598,8 @@ class MySQLAddNode(test.MySQLConsistency):
 
 		for trans in self._total_transaction:
 			try:
-				self.steal_data(trans)
-				if len(self._steal_dataset.keys()) == 0:
+				steal_len = self.steal_data(trans)
+				if steal_len == 0:
 					continue
 				self.insert_data(trans)
 				self.delete_data(trans)
@@ -662,7 +671,3 @@ class MySQLAddNode(test.MySQLConsistency):
 			vnode_iphashs.append(vnode)
 
 		parse.update_yaml(self._yaml_path,vnode_iphashs)
-
-	def _test_conshash(self):
-		pass
-

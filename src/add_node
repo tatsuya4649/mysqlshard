@@ -45,6 +45,7 @@ python ad2b 	\
 		--hash_column $HC \
 		--db $DB \
 		--table $TABLE \
+		--mode ${MODE:-"add"} \
 		$NOTICE \
 		--secret_once \
 		--user $USER \

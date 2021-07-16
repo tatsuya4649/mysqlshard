@@ -3,3 +3,7 @@ iphashs:
   hash:
   - 0c5e84c9c0bdf507353140923925fd5c
   port: 13306
+- ip: 172.25.0.1
+  hash:
+  - 059f71b309ae508a728fd922096eb09d
+  port: 23306

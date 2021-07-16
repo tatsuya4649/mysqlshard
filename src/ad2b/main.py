@@ -12,6 +12,7 @@ def main():
 	parser.add_argument("-y","--yaml_path",help="YAML file path of existing node info",type=str,required=True)
 	parser.add_argument("-d","--db",help="Sharding Database name",type=str,required=True)
 	parser.add_argument("-t","--table",help="Sharding Table name",type=str,required=True)
+	parser.add_argument("-m","--mode",help="How target node is treated?",choices=["add","delete"],required=True)
 	parser.add_argument("-s","--notice_script",help="When Success,execute script file")
 	parser.add_argument("-a","--notice_args",help="When Success,execute script file arguments",nargs="*")
 	parser.add_argument("-v","--virtual_nodecount",help="If you want the data to be more even,set it to a higher value(default: 100)",type=int,default=100)
@@ -43,5 +44,6 @@ def main():
 		ping_interval = args.ping_interval,
 		virtual_nodecount = args.virtual_nodecount,
 		require_reshard = args.non_reshard,
+		mode = args.mode,
 	)
 	a2node.sid(script=args.non_notice,update=args.non_update)
