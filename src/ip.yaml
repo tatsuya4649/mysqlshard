@@ -4,6 +4,16 @@ iphashs:
   password: mysql
   port: 13306
   user: root
+- hash: 5874976e82e85da0f4ae49caf280c711
+  ip: 192.168.16.1
+  password: mysql
+  port: 43306
+  user: root
+- hash: 8799adfebc671c36448a85245eeac5fe
+  ip: 172.31.0.1
+  password: mysql
+  port: 33306
+  user: root
 - hash: a0dffb129fffa47f1dd582d481c28717
   ip: 172.25.0.1
   password: mysql

@@ -4,16 +4,47 @@ def insert_ok():
 	questions = [
 		inquirer.List(
 			"insert_ok",
-			message=f"This results of sending sharding data to add new node. Insert now? (Ok?)",
-			choices=["Yes","No"],
+			message=f"this results of sending sharding data to add new node. insert now? (ok?)",
+			choices=["yes","no"],
 			carousel=False,
 		)
 	]
 	answer = inquirer.prompt(questions)
-	if answer["insert_ok"] == "Yes":
+	if answer["insert_ok"] == "yes":
 		return True
 	else:
-		print("WARNING: No data has been sent yet!!!")
+		print("warning: no data has been sent yet!!!")
+		return False
+
+def trans_ok():
+	questions = [
+		inquirer.List(
+			"trans_ok",
+			message=f"The data will be moved now,ok?",
+			choices=["yes","no"],
+			carousel=False,
+		)
+	]
+	answer = inquirer.prompt(questions)
+	if answer["trans_ok"] == "yes":
+		return True
+	else:
+		print("warning: no data has been sent yet!!!")
+		return False
+
+def error_handle():
+	questions = [
+		inquirer.List(
+			"error_handle",
+			message=f"What should I do?",
+			choices=["continue","end"],
+			carousel=False,
+		)
+	]
+	answer = inquirer.prompt(questions)
+	if answer["error_handle"] == "continue":
+		return True
+	else:
 		return False
 
 def insert_retry(ip,err_count):

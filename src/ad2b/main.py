@@ -17,9 +17,10 @@ def main():
 	parser.add_argument("-v","--virtual_nodecount",help="If you want the data to be more even,set it to a higher value(default: 100)",type=int,default=100)
 	parser.add_argument("--secret",help="No use of yaml user,password, use interactive input",action="store_true")
 	parser.add_argument("--secret_once",help="If Once input user/password, it use at all database user/password ",action="store_true")
-	parser.add_argument("--ping_interval",help="PING test interval time",type=int,default=1)
+	parser.add_argument("--ping_interval",help="PING test interval time",type=int,default=0)
 	parser.add_argument("--non_update",help="YAML non update",action="store_false")
 	parser.add_argument("--non_notice",help="No execute notice script",action="store_false")
+	parser.add_argument("-r","--require_reshard",help="If required to resharding,this flag should be on(ex.change virtual node count)",action="store_false")
 
 	args = parser.parse_args()
 	
@@ -41,5 +42,6 @@ def main():
 		secret_once = args.secret_once,
 		ping_interval = args.ping_interval,
 		virtual_nodecount = args.virtual_nodecount,
+		require_reshard = args.require_reshard,
 	)
 	a2node.sid(script=args.non_notice,update=args.non_update)

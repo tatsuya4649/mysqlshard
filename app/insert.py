@@ -33,5 +33,5 @@ def random_string(count=10):
 
 if __name__ == "__main__":
 	_URL="http://172.17.0.1:48080/user"
-	for _ in range(1000):
+	for _ in range(100):
 		post_request(_URL,random_string(),random_comment(count=100))
