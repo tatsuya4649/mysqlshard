@@ -23,7 +23,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		database,
 		table,
 		yaml_path="ip.yaml",
-		virtual_count=100,
 		_DEBUG=False,
 		funcpath=None,
 		notice_args=[],
@@ -59,12 +58,24 @@ class MySQLAddNode(test.MySQLConsistency):
 		except FileNotFoundError as e:
 			raise FileNotFoundError
 
+		# check YAML format
+		if not isinstance(self._exists_iphashs,list):
+			raise TypeError("this YAML File is invalid in this program.")
+		for node in self._exists_iphashs:
+			if "ip" not in node.keys() or \
+					"port" not in node.keys():
+					raise TypeError("this This is invalid in this program.(no ip,port)")
+			elif "hash" not in node.keys():
+				node["hash"] = [con.hash(node["ip"].encode("utf-8"))]
+			if not isinstance(node["hash"],list):
+				raise TypeError("this YAML File is invalid in this program.(hash must be list)")
+			
 		add_node_ip = ip
 		add_node_hash = con.hash(add_node_ip.encode("utf-8"))
 		self._add_node_dict = dict()
 		self._add_node_dict["ip"] = add_node_ip
 		self._add_node_dict["port"] = port
-		self._add_node_dict["hash"] = add_node_hash
+		self._add_node_dict["hash"] = [add_node_hash]
 		if user is None or password is None or secret:
 			res = userpass.secret_userpass(add_node_ip,port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
 			user = res["user"]
@@ -90,14 +101,25 @@ class MySQLAddNode(test.MySQLConsistency):
 			if node["ip"] == self._add_node_dict["ip"]:
 				raise ValueError("already added node in exists node")
 		new_iphashs.append(self._add_node_dict)
-		self._new_iphashs = parse.sort(new_iphashs)
+		# If resharding, delete virtual node
+		if require_reshard:
+			for node in self._exists_iphashs:
+				node_hash = con.hash(node["ip"].encode("utf-8"))
+				node["hash"] = [node_hash]
+			for node in new_iphashs:
+				node_hash = con.hash(node["ip"].encode("utf-8"))
+				node["hash"] = [node_hash]
+
+		self._new_iphashs = new_iphashs
 		self._ipport = dict()
 		self._ipuser = dict()
 		self._ippass = dict()
 		for node in self._new_iphashs:
 			self._ipport[node["ip"]] = node["port"]
 		userpassstr = f"\033[31mPlease input exists node database user and password\033[0m\nNOTICE: if trouble to input,\"secret=True\" in init function and insert user and password into yaml"
+		iphashs_set = set()
 		for node in self._new_iphashs:
+			if node["ip"] in iphashs_set: continue
 			if node["ip"] != add_node_ip:
 				time.sleep(ping_interval)
 				if ("user" not in node.keys() or "password" not in node.keys() or node["user"] is None or node["password"] is None or secret) and (secret_once is False):
@@ -110,11 +132,12 @@ class MySQLAddNode(test.MySQLConsistency):
 				self._ipuser[node["ip"]] = node["user"]
 				self._ippass[node["ip"]] = node["password"]
 				ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
+				iphashs_set.add(node["ip"])
 			else:
 				self._ipuser[add_node_ip] = user 
 				self._ippass[add_node_ip] = password 
-
-		self._add_node_index = self._new_iphashs.index(self._add_node_dict)
+				iphashs_set.add(node["ip"])
+		
 		self._conn = None
 		self._steal_data = list()
 		self._hash_column = hash_column
@@ -126,8 +149,7 @@ class MySQLAddNode(test.MySQLConsistency):
 		self._total_data_count = dict()
 		self._deplica_insert = dict()
 
-		self._virtual_nodecount=virtual_nodecount
-		self._virtual_node(self._virtual_nodecount)
+		self._virtual_node(virtual_nodecount)
 		self._ip_query = dict()
 		self._total_transaction = self._real_steal_query()
 		self._steal_dataset = dict()
@@ -147,29 +169,25 @@ class MySQLAddNode(test.MySQLConsistency):
 
 	# count: total node count(real node + virtual node)
 	def _virtual_node(self,count):
-		total = len(self._new_iphashs)
+		total = 0
+		for node in self._new_iphashs:
+			total += len(node["hash"])
 		virtual_iphashs = copy.deepcopy(self._new_iphashs)
 		virtual_haship = dict()
 
 		for obj in self._new_iphashs:
 			ip = obj["ip"]
-			virtual_dict = dict()
-			virtual_dict["ip"] = ip
-			virtual_dict["hash"] = obj["hash"]
-			virtual_haship[obj["hash"]] = ip
-			virtual_iphashs.append(virtual_dict)
+			for hash in obj["hash"]:
+				virtual_haship[hash] = ip
 
 		if total < count:
 			while total < count:
-				for obj in self._new_iphashs:
+				for obj in virtual_iphashs:
 					ip = obj["ip"]
 					virtual_ip = f"{ip}{total}"
 					virtual_hash = con.hash(virtual_ip.encode("utf-8"))
-					virtual_dict = dict()
-					virtual_dict["ip"] = ip
-					virtual_dict["hash"] = virtual_hash
-					virtual_haship[virtual_hash] = ip
-					virtual_iphashs.append(virtual_dict)
+					virtual_haship[virtual_hash] = obj["ip"]
+					obj["hash"].append(virtual_hash)
 					total += 1
 
 		self._virtual_haship = sorted(virtual_haship.items())
@@ -179,21 +197,8 @@ class MySQLAddNode(test.MySQLConsistency):
 	def _virtual_org(self):
 		if self._virtual_iphashs is None:
 			raise ValueError("must have _virtual_iphashs. hints: call _virtual_node function.")
-		virtuals = list()
-		for obj in self._new_iphashs:
-			virtual_dict = dict()
-			ip = obj["ip"]
-			virtual_dict["ip"] = ip
-			virtual_dict["hashs"] = list()
-			for vobj in self._virtual_iphashs:
-				if ip == vobj["ip"]:
-					virtual_dict["hashs"].append(vobj["hash"])
-			virtuals.append(virtual_dict)
-		# Order by hashID
-		for i in range(len(virtuals)):
-			virtuals[i]["hashs"]  = sorted(virtuals[i]["hashs"])
-		return virtuals
-
+		for obj in self._virtual_iphashs:
+			obj["hash"].sort()
 	@property
 	def add_ip(self):
 		return self._add_node_dict["ip"]
@@ -203,127 +208,6 @@ class MySQLAddNode(test.MySQLConsistency):
 	@property
 	def add_hash(self):
 		return self._add_node_dict["hash"]
-	@property
-	def add_index(self):
-		return self._add_node_index
-	def _debug_red(self,str):
-		if str is None:
-			return None
-		return '\033[31m' + str + '\033[0m'
-	def _debug_blue(self,str):
-		if str is None:
-			return None
-		return '\033[34m' + str + '\033[0m'
-	def _debug_green(self,str):
-		if str is None:
-			return None
-		return '\033[32m' + str + '\033[0m'
-
-	def _debug_steal_query(self,hdict):
-		print(f"{self._debug_red('========================== DEBUG =========================')}")
-		print(f"biggest change: {hdict['bchange']}")
-		print(f"smallest change: {hdict['schange']}")
-		addv = hdict["add"]
-		for i in range(len(addv["hashs"])):
-			if addv["hashs"][i] == hdict["hash"]:
-				print(f"{self._debug_red(addv['hashs'][i])}",end=",")
-			else:
-				print(f"{addv['hashs'][i]}",end=",")
-		print("")
-		if "bindex" in hdict.keys():
-			print(f"virtualb index => {self._debug_blue(str(hdict['bindex']))}")
-			print(f"{self._debug_blue(hdict['vir']['hashs'][hdict['bindex']])}")
-		if "index" in hdict.keys():
-			print(f"virtual index => {self._debug_green(str(hdict['index']))}")
-			print(f"{self._debug_green(hdict['vir']['hashs'][hdict['index']])}")
-		print(f"{self._debug_red('==========================================================')}")
-	def _hash_smallest(self,hashs,smallest,threshold):
-		results = list()
-		for h in hashs:
-			if smallest is None:
-				if threshold < h:
-					results.append(h)
-			else:
-				if h < smallest and threshold <= h:
-					results.append(h)
-		if len(results) == 0:
-			return None
-		else:
-			return min(results)
-	def _hash_biggest(self,hashs,biggest,threshold):
-		results = list()
-		for h in hashs:
-			if biggest is None:
-				if threshold > h:
-					results.append(h)
-			else:
-				if h > biggest and threshold >= h:
-					results.append(h)
-		if len(results) == 0:
-			return None
-		else:
-			return max(results)
-
-	"""
-		add_virtual => Added virtual node dict("ip","hashs")
-		virtual_index => Index dict("ip",index) for getting the index with the smallest hash value greater than the hash value of add_virtual
-		virtualb_index => Index dict("ip",index) for getting the index with the biggest hash value smaller than the hash value of add_virtual
-		nonaddvirs => virtuals excluding add_virtual
-	"""
-	def virtualhash(self,add_virtual,nonaddvirs):
-		rem_lists = list()
-		# res_dict["ip"],res_dict["query"]
-		res_dict = dict()
-		for j in range(len(add_virtual["hashs"])):
-			# now hash value
-			addhash = add_virtual["hashs"][j]
-			# if last hash in added virtual
-			if j+1 == len(add_virtual["hashs"]):
-				smallest_hash = None
-			else:
-				smallest_hash = add_virtual["hashs"][j+1]
-			if j == 0:
-				biggest_hash = None
-			else:
-				biggest_hash = add_virtual["hashs"][j-1]
-			# have smallest ip larger than hash(added node virtual hash)
-			smallest_ip = None
-			# have biggest ip smaller than hash(added node virtual hash)
-			biggest_ip = None
-
-			# loop of non adding node
-			for nonadd in nonaddvirs:
-				res = self._hash_smallest(nonadd["hashs"],smallest_hash,addhash)
-				if res is not None:
-					if smallest_hash is None or smallest_hash > res:
-						smallest_hash = res
-						smallest_ip = nonadd["ip"]
-				res = self._hash_biggest(nonadd["hashs"],biggest_hash,addhash)
-				if res is not None:
-					if biggest_hash is None or res > biggest_hash:
-						biggest_hash = res
-						biggest_ip = nonadd["ip"]
-			if smallest_ip is None or smallest_ip == self.add_ip:
-				rem_lists.append(j)
-				continue
-
-			if smallest_ip not in res_dict.keys():
-				res_dict[smallest_ip] = list()
-			more = ""
-			if biggest_hash is not None:
-				more = f"{self._hash_column} > \"{biggest_hash}\""
-			less = f"\"{smallest_hash}\" > {self._hash_column}"
-			query = f" {more} AND {less} "
-			res_dict[smallest_ip].append(query)
-			if self._DEBUG:
-				from_str = ""
-				to_str = ""
-				if biggest_hash is not None:
-					from_str = f"from {self._debug_red(biggest_hash)} "
-				if smallest_hash is not None:
-					to_str = f" to {self._debug_red(smallest_hash)}"
-				print(f"{from_str}{to_str}")
-		return rem_lists,res_dict
 
 	def _have_real_node(self,hash,exih_order):
 		for j in range(len(exih_order)):
@@ -334,31 +218,34 @@ class MySQLAddNode(test.MySQLConsistency):
 	def _real_steal_query(self):
 		HASH_INDEX=0
 		IP_INDEX=1
-		virtuals = self._virtual_org()
+		self._virtual_org()
 		# Real node IP(key),HASH(value) list sorted in reverse
-		exih_order = sorted(self._exists_iphashs,key=lambda x:x["hash"],reverse=False)
+		exih_order = list()
+		for node in self._exists_iphashs:
+			print(node)
+			for hash in node["hash"]:
+				exih_order.append(
+					{
+						"ip": node["ip"],
+						"hash": hash
+					}
+				)
+		exih_order = sorted(exih_order,key=lambda x:x["hash"])
 
 		# Get From Exists Node
 		vhip_len = len(self._virtual_haship)
 		for i in range(vhip_len):
 			haship = self._virtual_haship[i]
-#			print(haship)
-		
-		exists_hashs = list()
-		for node in self._exists_iphashs:
-			exists_hashs.append(node["hash"])
-#			print(f"{node['hash']}: {node['ip']}")
+			print(haship)
 
-#		print(exists_hashs)
 		total_transaction = list()
 		pre_trans = dict()
 		for i in range(vhip_len):
 			haship = self._virtual_haship[i]
 			nowhaveih,previh = self._have_real_node(haship[HASH_INDEX],exih_order)
-#			print(haship)
 			trans = dict()
 			if i == 0:
-				trans["minhash"] = self._virtual_haship[-1]
+				trans["minhash"] = self._virtual_haship[-1][HASH_INDEX]
 				trans["maxhash"] = haship[HASH_INDEX]
 			else:
 				trans["minhash"] = pretrans["maxhash"]
@@ -371,8 +258,6 @@ class MySQLAddNode(test.MySQLConsistency):
 		
 #		for trans in total_transaction:
 #			print(trans)
-		
-
 		return total_transaction
 
 	@property
@@ -382,7 +267,6 @@ class MySQLAddNode(test.MySQLConsistency):
 			if trans["steal_ip"] not in steal_ips:
 				steal_ips.append(trans["steal_ip"])
 		return steal_ips
-#		return list(self._ip_query.keys())
 	def _steal_dataset_init(self):
 		for column in self._columns:
 			self._steal_dataset[column] = set()
@@ -894,11 +778,25 @@ class MySQLAddNode(test.MySQLConsistency):
 
 	def _update_yaml(self):
 		new_iphashs = copy.deepcopy(self._new_iphashs)
-		if not self._secret:
-			for node in new_iphashs:
-				node["user"] = self._ipuser[node["ip"]]
-				node["password"] = self._ippass[node["ip"]]
-		parse.update_yaml(self._yaml_path,self._new_iphashs)
+		vnode_dict = dict()
+		vnode_iphashs = list()
+		for node in new_iphashs:
+			vnode_dict[node["ip"]] = list()
+			for vnode in self._virtual_iphashs:
+				if node["ip"] == vnode["ip"]:
+					vnode_dict[node["ip"]].append(vnode["hash"])
+			vnode_dict[node["ip"]].sort()
+
+			vnode = dict()
+			vnode["ip"] = node["ip"]
+			vnode["hash"] = vnode_dict[node["ip"]]
+			vnode["port"] = self._ipport[node["ip"]]
+			if not self._secret:
+				vnode["user"] = self._ipuser[node["ip"]]
+				vnode["password"] = self._ippass[node["ip"]]
+			vnode_iphashs.append(vnode)
+
+		parse.update_yaml(self._yaml_path,vnode_iphashs)
 
 	def _test_conshash(self):
 		pass

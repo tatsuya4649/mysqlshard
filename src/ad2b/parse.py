@@ -11,8 +11,8 @@ def parse_yaml(path):
 	lists = sorted(ips,key=lambda x:x["hash"])
 	return lists
 
-def sort(lists):
-	return sorted(lists,key=lambda x:x["hash"])
+#def sort(lists):
+#	return sorted(lists,key=lambda x:x["hash"])
 
 def update_yaml(path,lists):
 	newips = dict()

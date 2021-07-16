@@ -20,7 +20,7 @@ def main():
 	parser.add_argument("--ping_interval",help="PING test interval time",type=int,default=0)
 	parser.add_argument("--non_update",help="YAML non update",action="store_false")
 	parser.add_argument("--non_notice",help="No execute notice script",action="store_false")
-	parser.add_argument("-r","--require_reshard",help="If required to resharding,this flag should be on(ex.change virtual node count)",action="store_false")
+	parser.add_argument("-n","--non_reshard",help="If required to resharding,this flag should be on(ex.change virtual node count)",action="store_false")
 
 	args = parser.parse_args()
 	
@@ -42,6 +42,6 @@ def main():
 		secret_once = args.secret_once,
 		ping_interval = args.ping_interval,
 		virtual_nodecount = args.virtual_nodecount,
-		require_reshard = args.require_reshard,
+		require_reshard = args.non_reshard,
 	)
 	a2node.sid(script=args.non_notice,update=args.non_update)
