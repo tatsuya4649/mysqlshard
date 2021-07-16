@@ -367,7 +367,6 @@ class MySQLAddNode(test.MySQLConsistency):
 						raise
 					finally:
 						self._conn = None
-#		self._delete_res += res_list
 
 		return res_list
 	@property
@@ -377,78 +376,12 @@ class MySQLAddNode(test.MySQLConsistency):
 			if trans["insert_ip"] not in insert_ips:
 				insert_ips.append(trans["insert_ip"])
 		return insert_ips
-#	def contest_delete(self):
-#		try:
-#			self._contest_delete()
-#		except test.ConsistencyDeleteError as e:
-#			print(e)
-#		except test.ConsistencyUnmatchError as e:
-#			print(e)
-#			
-#	def _contest_delete(self):
-#		print(self.steal_len)
-#		print(self.delete_len)
-#		if self.steal_len != self.delete_len:
-#			raise test.ConsistencyDeleteError("Detect Insert Error",(self.delete_len - self.steal_len))
-#	def contest_insert(self):
-#		try:
-#			self._contest_insert()
-#		except test.ConsistencyInsertError as e:
-#			print(e)
-#			if choice.insert_retry(self.insert_ip,e.err_count):
-#				pass
-#			return False
-#		except test.ConsistencyUnmatchError as e:
-#			print(e)
-#			if choice.insert_redo():
-#				self.insert_redo()
-#			return False
-#		else:
-#			return True
-#	def _contest_insert(self):
-#		print(self.steal_len)
-#		print(self.insert_total_len)
-#		if self.steal_len != self.insert_total_len:
-#			raise test.ConsistencyInsertError("Detect Insert Error",len([x for x in self._insert_res if x == 0]))
-#			
-#		for column in self._steal_dataset.keys():
-#			if self._insert_dataset[column] != self._steal_dataset[column]:
-#				raise test.ConsistencyUnmatchError("insert dataset unmatch to steal dataset")
-#	def insert_redo(
-#		self,
-#	):
-#		self._conn = pymysql.connect(
-#			host=self.insert_ip,
-#			port=self._insert_port,
-#			user=self._ipuser[self.insert_ip],
-#			password=self._ippass[self._insert_ip],
-#			db=self._database,
-#			cursorclass=pymysql.cursors.DictCursor
-#		)
-#		res_list = list()
-#		for ip in self.steal_ip:
-#			query = self._ip_query[ip]
-#			try:
-#				with self._conn.cursor() as cursor:
-#					sql = f"DELETE FROM {self._table} WHERE {query}"
-#					print(f"{sql}")
-#					self._conn.begin()
-#					res = cursor.execute(sql)
-#					res_list.append(res)
-#					self._conn.commit()
-#			except Exception as e:
-#				print(e)
-#				pass
-#			finally:
-#				self._conn = None
-
 	def _insert_dataset_init(self):
 			for column in self._columns:
 				self._insert_dataset[column] = set()
 	
 	def _init_contest_data(self):
 		self._insert_res = list()
-#		self._delete_res = list()
 		self._steal_ip_count = dict()
 		for ip in self.steal_ip:
 			self._steal_ip_count[ip] = 0
@@ -530,46 +463,6 @@ class MySQLAddNode(test.MySQLConsistency):
 					total_len += 0
 		return total_len
 
-#	@property
-#		if len(self._delete_res) == 0:
-#	def delete_len(self):
-#			return 0
-#		total = 0
-#		for i in self._delete_res:
-#			total += i
-#		return total
-	def part_insert_date(
-		self,
-		index_list,
-		wait_printtime=10,
-	):
-		# Delete Add Host
-		host = self.add_ip
-		self._conn = pymysql.connect(
-			host=host,
-			port=self._ipport[host],
-			user=self._ipuser[host],
-			password=self._ippass[host],
-			database=self._database,
-			cursorclass=pymysql.cursors.DictCursor
-		)
-		res_list = list()
-		for idx in index_list:
-			try:
-				with self._conn.cursor() as cursor:
-					sql = f"INSERT INTO {self._table} {str(self._columns)} VALUES {self._columns.convert(self._steal_date[idx])}"
-					print(sql)
-					self._conn.begin()
-					res = cursor.execute(sql)
-					res_list.append(res)
-					self._conn.commit()
-			except Exception as e:
-				res_list.append(0)
-				print(e)
-				time.sleep(wait_printtime)
-		self._conn = None
-		return res_list
-	
 	def _get_allnode_data_count(self):
 		for node in self._new_iphashs:
 			ip = node["ip"]
@@ -596,13 +489,6 @@ class MySQLAddNode(test.MySQLConsistency):
 			except Exception as e:
 				print(e)
 				sys.exit(1)
-#	def _dot_count(self,column_size,length):
-#		count = int((column_size - length)/2)
-#		remainder = (column_size - length)%2
-#		return count,remainder
-#	def _draw(self,string,count):
-#		for _ in range(count):
-#			print(string,end="")
 
 	def _check_trans(self):
 		if self._require_reshard:
@@ -623,95 +509,74 @@ class MySQLAddNode(test.MySQLConsistency):
 			print("End program without moving data.")
 			sys.exit(1)
 
-	# Show amount of data ratio before and after
-#	def _before_after(self):
-#		self._get_allnode_data_count()
-#
-#		allnode_ip = list()
-#		allnode_updown = dict()
-#		total_datacount = 0
-#		for node in self._new_iphashs:
-#			allnode_ip.append(node["ip"])
-#			total_datacount += self._total_data_count[node["ip"]]
-#
-#		# Before
-#		termcolumn = shutil.get_terminal_size().columns
-#		before_len = len("before")
-#		after_len = len("after")
-#		count,remainder = self._dot_count(termcolumn,before_len)
-#		self._draw("-",count)
-#		print("before",end="")
-#		self._draw("-",count)
-#		if remainder:
-#			print("-")
-#
-#		for ip in allnode_ip:
-#			print("|",end="")
-#			before = self._total_data_count[ip]
-#			allnode_updown[ip] = before
-#			string = f"{ip}: {before}"
-#			count,remainder = self._dot_count(termcolumn-2,len(string))
-#			self._draw(" ",count)
-#			print(string,end="")
-#			self._draw(" ",count)
-#			if remainder:
-#				print("",end="")
-#			print("|")
-#			
-#		self._draw("-",termcolumn)
-#
-#		# After
-#		count,remainder = self._dot_count(termcolumn,after_len)
-#		self._draw("-",count)
-#		print("after",end="")
-#		self._draw("-",count)
-#		if remainder:
-#			print("-")
-#
-#
-#		aftertotal_datacount = 0
-#		for ip in allnode_ip:
-#			print("|",end="")
-#			after = self._total_data_count[ip]
-#			for trans in self._total_transaction:
-#				if ip == trans["insert_ip"]:
-#					after += len(trans["steal_data"])
-#				elif ip == trans["steal_ip"]:
-#					after -= len(trans["steal_data"])
-#				else:
-#					after += 0
-#			aftertotal_datacount += after
-#			gap = allnode_updown[ip] - after
-#			string = f"{ip}: {after}"
-#			stringlen = len(string)
-#			if gap > 0:
-#				string = f"{ip}: \033[31m{after}\033[0m"
-#			elif gap == 0:
-#				string = f"{ip}: {after}"
-#			else:
-#				string = f"{ip}: \033[34m{after}\033[0m"
-#			count,remainder = self._dot_count(termcolumn-2,stringlen)
-#			self._draw(" ",count)
-#			print(string,end="")
-#			self._draw(" ",count)
-#			if remainder:
-#				print(" ",end="")
-#			print("|")
-#
-#		self._draw("-",termcolumn)
-#
-#		print("")
-#
-#		if total_datacount != aftertotal_datacount:
-#			raise test.ConsistencyError("difference total data and after total data.")
-#		# If choise not to send, end.
-#		if not choice.insert_ok():
-#			print("Data was not moved from Existed node to Added node.")
-#			sys.exit(1)
-
 	@property
 	def columns(self):
 		return self._columns
+	
+	def _redo_errhandle(self,redo_trans):
+		res = choice.redo_errhandle()
+		if res is choice.RedoErrorHandle.CANCEL:
+			sys.exit(1)
+		elif res is choice.RedoErrorHandle.FILE:
+			with open("err.data","a") as f:
+				writestr = f'{redo_trans["steal_ip"],redo_trans["insert_ip"],redo_trans["minhash"],redo_trans["maxhash"]},'
+				if "steal_len" in redo_trans.keys():
+					writestr += f'{redo_trans["steal_len"]},'
+				if "steal_data" in redo_trans.keys():
+					writestr += f'{redo_trans["steal_data"]}'
+				writestr += f'\n'
+				f.write(writestr)
+			sys.exit(1)
+		else:
+			self._redo_errhandle(redo_trans)
+
+
+	def _redo(self):
+		for i in range(len(self._total_transaction)):
+			trans = self._total_transaction[-1-i]
+			if trans["complete"] is True:
+				ipinfo = f'{trans["insert_ip"]}=>{trans["steal_ip"]}'
+				hashinfo = f'(\"{trans["minhash"]}\"~\"{trans["maxhash"]}\")'
+				redo_trans = copy.deepcopy(trans)
+				redo_trans["steal_ip"] = trans["insert_ip"]
+				redo_trans["insert_ip"] = trans["steal_ip"]
+				redo_trans["complete"] = False
+
+				try:
+					self.steal_data(redo_trans)
+					if len(self._steal_dataset.keys()) == 0:
+						continue
+					self.insert_data(redo_trans)
+					self.delete_data(redo_trans)
+					del redo_trans["steal_data"]
+					redo_trans["complete"] = True
+					print("%-33s%s"%(ipinfo,hashinfo))
+				except Exception as e:
+					print(e)
+					print("\033[31mOccur Error in Redo\033[0m")
+					self._redo_errhandle(redo_trans)
+				finally:
+					self._steal_dataset_init()
+		print("Back to be state of before of sharding.")
+		sys.exit(1)
+
+	def _error_selection(self,trans):
+		error_handle = choice.error_handle()
+		if error_handle == choice.ErrorHandle.REDO:
+			self._redo()
+		elif error_handle == choice.ErrorHandle.CANCEL:
+			if choice.really_cancel(trans["steal_ip"],trans["insert_ip"]):
+				sys.exit(1)
+			else:
+				self._error_selection(trans)
+		elif error_handle == choice.ErrorHandle.CONTINUE:
+			if choice.really_continue(trans["steal_ip"],trans["insert_ip"]):
+				return 
+			else:
+				self._error_selection(trans)
+		else:
+			raise choice.UnknownErrorHandle
+
 
 	# Steal,Insert,Delete
 	def sid(self,script=True,update=True):
@@ -728,10 +593,7 @@ class MySQLAddNode(test.MySQLConsistency):
 				if len(self._steal_dataset.keys()) == 0:
 					continue
 				self.insert_data(trans)
-#				if self.contest_insert():
-#				if choice.delete_data(self.delete_ip):
 				self.delete_data(trans)
-#				self.contest_delete()
 				del trans["steal_data"]
 				trans["complete"] = True
 				sip_count = trans["steal_len"]
@@ -740,15 +602,18 @@ class MySQLAddNode(test.MySQLConsistency):
 					sip_count -= trans["steal_fake"][sip]
 				after_totalcount[trans["steal_ip"]] -= sip_count
 				after_totalcount[trans["insert_ip"]] += trans["steal_len"]
+
+				# DEBUG
+				if trans is self._total_transaction[-1]:
+					raise Exception
+
 			except Exception as e:
 				print(f"Occurred error !!!")
 				print(f'\033[31mDB: {self._database} TABLE: {self._table} HASH_COLUMN: {self._hash_column}\033[0m')
 				ipinfo = f'\033[31m{trans["steal_ip"]}=>{trans["insert_ip"]}\033[0m'
 				hashinfo = f'\033[31m(\"{trans["minhash"]}\"~\"{trans["maxhash"]}\")\033[0m'
 				print("%-33s%s"%(ipinfo,hashinfo))
-				if choice.error_handle():
-					pass
-
+				self._error_selection(trans)
 
 		print("Before :")
 		for node in self._new_iphashs:

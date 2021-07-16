@@ -49,7 +49,7 @@ python ad2b 	\
 		--secret_once \
 		--user $USER \
 		--password $PASSWORD \
-		-v 1000 \
+		-v 10 \
 		$NORE \
 
 
