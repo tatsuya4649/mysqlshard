@@ -50,7 +50,7 @@ python ad2b 	\
 		--secret_once \
 		--user $USER \
 		--password $PASSWORD \
-		-v 10 \
+		-v ${VCOUNT:-10} \
 		$NORE \
 
 
