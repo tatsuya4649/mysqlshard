@@ -139,6 +139,8 @@ class MySQLAddNode(test.MySQLConsistency):
 			new_iphashs.append(self._target_node_dict)
 		elif self._mode is NodeMode.DELETE:
 			new_iphashs = [ x for x in new_iphashs if x["ip"] != self._target_node_dict["ip"]]
+			if len(new_iphashs) == 0:
+				raise ValueError("Ther is only one node.If delete this node, all data will be gone.")
 
 		# If resharding, delete virtual node
 		if require_reshard:
@@ -163,7 +165,11 @@ class MySQLAddNode(test.MySQLConsistency):
 			if node["ip"] in iphashs_set: continue
 			if node["ip"] != target_node_ip:
 				time.sleep(ping_interval)
-				if ("user" not in node.keys() or "password" not in node.keys() or node["user"] is None or node["password"] is None or secret) and (secret_once is False):
+				if ("user" not in node.keys() or \
+					"password" not in node.keys() or \
+						node["user"] is None or node["password"] is None \
+							or secret) \
+					and (secret_once is False):
 					res = userpass.secret_userpass(node["ip"],node["port"],self._database,userpassstr)
 					node["user"] = res["user"]
 					node["password"] = res["password"]
@@ -203,17 +209,19 @@ class MySQLAddNode(test.MySQLConsistency):
 			_iphashs = self._exists_iphashs
 		return _iphashs
 	@property
-	def _mode_exists_iphashs(self):
+	def _mode_having_iphashs(self):
 		if self._mode is NodeMode.ADD:
 			_iphashs = self._exists_iphashs
 		elif self._mode is NodeMode.DELETE:
-			_iphashs = self._virtual_iphashs
+			_iphashs = self._exists_topology
 		return _iphashs
 	@property
 	def _mode_target_haship(self):
 		if self._mode is NodeMode.ADD:
 			_haship = self._virtual_haship
 		elif self._mode is NodeMode.DELETE:
+			_haship = self._virtual_haship
+			return _haship
 			_haship = dict()
 			iphashs = self._exists_topology
 			for node in iphashs:
@@ -225,8 +233,7 @@ class MySQLAddNode(test.MySQLConsistency):
 	@property
 	def _mode_having_haship(self):
 		exih_order = list()
-		for node in self._mode_exists_iphashs:
-			print(node)
+		for node in self._mode_having_iphashs:
 			for hash in node["hash"]:
 				exih_order.append(
 					{
@@ -282,6 +289,7 @@ class MySQLAddNode(test.MySQLConsistency):
 				obj["hash"].append(virtual_hash)
 				print(f'{obj["ip"]}: {virtual_hash}')
 				total += 1
+		# This is the node info that is distination of moving data
 		self._virtual_haship = sorted(virtual_haship.items())
 		self._virtual_iphashs = virtual_iphashs
 	
@@ -300,44 +308,51 @@ class MySQLAddNode(test.MySQLConsistency):
 	@property
 	def target_hash(self):
 		return self._target_node_dict["hash"]
-
-	def _have_real_node(self,hash,having_order):
+	
+	# receive node having data now, and hash id of after moving node
+	# returns a dictionary at the index that represents the node to which data should be passed 
+	def _have_real_node(self,target_hash,having_order):
 		for j in range(len(having_order)):
 			if self._mode == NodeMode.ADD:
-				if having_order[j]["hash"] >= hash:
-					return having_order[j],having_order[j-1]
+				if having_order[j]["hash"] >= target_hash:
+					return j
 			elif self._mode == NodeMode.DELETE:
-				if having_order[j]["hash"] >= hash:
-					print(having_order[j]["hash"])
-					print(f'\t{hash}')
-					return having_order[j],having_order[j-1]
-		return having_order[0],having_order[-1]
-
+				if having_order[j]["hash"] >= target_hash:
+					return j
+		return 0
 
 	def _real_steal_query(self):
 		HASH_INDEX=0
 		IP_INDEX=1
 		self._virtual_org()
-		# Real node IP(key),HASH(value) list sorted in reverse
+		# get nodes that having a data now (before moving.).Sorted by hashid.
+		# [{'hash': `HASH`,ip: `IP`}]
 		having_haship = self._mode_having_haship
-
-		vhip_len = len(self._mode_target_haship)
+		# get nodes length that will be haved data (after moving.)
+		target_len = len(self._mode_target_haship)
 		total_transaction = list()
 		pre_trans = dict()
-		for i in range(vhip_len):
+
+		print(having_haship)
+		print(self._virtual_iphashs)
+		haveset = set()
+		# loog node that after moving.
+		for i in range(target_len):
+			# target node Hash and IP in after moving
 			haship = self._mode_target_haship[i]
-			matchih,_ = self._have_real_node(haship[HASH_INDEX],having_haship)
+			matchindex = self._have_real_node(haship[HASH_INDEX],having_haship)
+			matchih = self._mode_having_haship[matchindex]
 			trans = dict()
 			if i == 0:
 				trans["minhash"] = self._mode_target_haship[-1][HASH_INDEX]
 				trans["maxhash"] = haship[HASH_INDEX]
 				trans["logical"] = Logical.OR
 			else:
-				trans["minhash"] = pre_trans["maxhash"] if NodeMode.ADD else self._mode_target_haship[i-1][HASH_INDEX]
+				trans["minhash"] = pre_trans["maxhash"] 
 				trans["maxhash"] = haship[HASH_INDEX]
 				trans["logical"] = Logical.AND
-			trans["steal_ip"] = matchih["ip"] if self._mode is NodeMode.ADD else haship[IP_INDEX]
-			trans["insert_ip"] = haship[IP_INDEX] if self._mode is NodeMode.ADD else matchih["ip"]
+			trans["steal_ip"] = matchih["ip"] 
+			trans["insert_ip"] = haship[IP_INDEX]
 			if trans["steal_ip"] != trans["insert_ip"]:
 				total_transaction.append(trans)
 			pre_trans = trans
