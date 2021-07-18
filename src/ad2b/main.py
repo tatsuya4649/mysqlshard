@@ -1,5 +1,5 @@
 import sys
-import add_node
+from .worker import MySQL
 import argparse
 
 def main():
@@ -28,7 +28,7 @@ def main():
 	if args.notice_args is None:
 		args.notice_args = []
 	
-	a2node = add_node.MySQLAddNode(
+	a2node = MySQLAddNode(
 		ip = args.ip,
 		port = args.port,
 		hash_column = args.hash_column,

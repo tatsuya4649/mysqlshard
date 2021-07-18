@@ -1,4 +1,3 @@
-import add_node
-import main
+from . import main
 
 main.main()

@@ -1,6 +1,7 @@
 from node import NodeMode,NodeWorker
 from .err import *
 from .nodeope import *
+from node import *
 import inspect
 
 class Cluster:
@@ -17,6 +18,7 @@ class Cluster:
 		self._database = cluster_info["database"]
 		self._table = cluster_info["table"]
 		self._hash_column = cluster_info["hash_column"]
+		self._cluster_yaml = cluster_info["cluster_yaml"]
 	# check have a operation lists
 	def _require_operation_lists(func):
 		def _check(self,*args,**kwargs):
@@ -81,7 +83,7 @@ class MySQLCluster(Cluster):
 		operations = self._operations_check(operations)
 		super().__init__(cluster_info)
 		self._operation_lists = operations
-		self._worker = NodeWorker
+		self._worker = MySQLWorker
 
 	def _operations_check(self,operations):
 		if isinstance(operations,MySQLOperation):

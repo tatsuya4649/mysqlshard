@@ -14,6 +14,7 @@ def yaml_to_ops(path):
 	database: example
 	table: user
 	hash_column: hash_username
+	cluster_yaml: "./cluster.yaml"
 	ops:
 	- ip: "127.0.0.1"
 	  port: 3306
@@ -32,6 +33,7 @@ def yaml_to_ops(path):
 	_check_database(obj)
 	_check_table(obj)
 	_check_hash_column(obj)
+	_check_cluster_yaml(obj)
 
 	type = obj["type"]
 	if type == OperationType.MYSQL.value:
@@ -46,7 +48,11 @@ def yaml_to_ops(path):
 		_check_operation(ops)
 		ip,port,mode = _get_operation(ops)
 		if type is OperationType.MYSQL:
-			operation = MySQLOperation(ip=ip,port=port,mode=mode)
+			operation = MySQLOperation(
+				ip=ip,
+				port=port,
+				mode=mode,
+			)
 		else:
 			raise ClusterTypeError("invalid operation type.")
 		lists.append(operation)
@@ -57,6 +63,7 @@ def yaml_to_ops(path):
 		"database": obj["database"],
 		"table": obj["table"],
 		"hash_column": obj["hash_column"],
+		"cluster_yaml": obj["cluster_yaml"],
 	}
 	return cluster_info,lists
 
@@ -71,6 +78,9 @@ def _check_database(obj):
 def _check_hash_column(obj):
 	if "hash_column" not in obj.keys() or obj["hash_column"] is None:
 		raise ClusterOpsTypeError(f'\"hash_column\" is empty.')
+def _check_cluster_yaml(obj):
+	if "cluster_yaml" not in obj.keys() and obj["cluster_yaml"] is None:
+		raise ClusterOpsTypeError(f'\"cluster_yaml\" is invalid value.')
 	
 def _check_table(obj):
 	if "table" not in obj.keys() or obj["table"] is None:

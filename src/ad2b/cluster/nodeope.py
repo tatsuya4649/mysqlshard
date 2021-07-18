@@ -32,7 +32,11 @@ class NodeOperation:
 
 
 class MySQLOperation(NodeOperation):
-        def __init__(self,ip,port,mode=NodeMode.ADD):
+        def __init__(self,
+		ip,
+		port,
+		mode=NodeMode.ADD
+	):
                 super().__init__(ip,port,mode)
 
 __all__ = [

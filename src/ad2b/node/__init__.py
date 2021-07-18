@@ -1,6 +1,6 @@
-from .add_node import *
+from .worker import *
 
 __all__ = [
-	NodeMode,
-	MySQLAddNode
+	NodeMode.__name__,
+	MySQLWorker.__name__,
 ]

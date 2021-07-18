@@ -2,6 +2,7 @@ type: mysql
 database: example
 table: user
 hash_column: hash_username
+cluster_yaml: "./ip.yaml"
 ops:
 - ip: "127.0.0.1"
   port: 3306

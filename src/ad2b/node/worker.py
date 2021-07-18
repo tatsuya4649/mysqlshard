@@ -14,10 +14,12 @@ from . import userpass
 from . import notice
 from . import ping
 from . import columns as clms
+from .ip import ip_check
 from .algo import con
 import time
 import shutil
 from enum import Enum
+from .err import *
 
 class NodeMode(Enum):
 	ADD			= "add"			# New node add cluster
@@ -27,62 +29,113 @@ class Logical(Enum):
 	OR			= "or"
 
 class NodeWorker:
-	def __init__(*args,**kwargs):
-		print(args)
-		print(kwargs)
 	def work(self):
-		print("work now")
+		raise NotImplementedError("work must be implemented.")
+	def _cluster_check(self,cluster_info):
+		if "database" not in cluster_info.keys():
+			raise NodeWorkerValueError("cluster_info dict must have databse key.")
+		if "table" not in cluster_info.keys():
+			raise NodeWorkerValueError("cluster_info dict must have table key.")
+		if "hash_column" not in cluster_info.keys():
+			raise NodeWorkerValueError("cluster_info dict must have hash_column key.")
+		if "cluster_yaml" not in cluster_info.keys():
+			raise NodeWorkerValueError("params dict must have yaml_path key.")
 
-class MySQLAddNode(test.MySQLConsistency,NodeWorker):
+		self._database = cluster_info["database"]
+		self._table = cluster_info["table"]
+		self._hash_column = cluster_info["hash_column"]
+		self._yaml_path = cluster_info["cluster_yaml"]
+
+		if not isinstance(self._database,str):
+			raise NodeWorkerTypeError("Database mast be string.")
+		if not isinstance(self._table,str):
+			raise NodeWorkerTypeError("Table mast be string.")
+		if not isinstance(self._hash_column,str):
+			raise NodeWorkerTypeError("Hash Column mast be string.")
+		if not isinstance(self._yaml_path,str):
+			raise NodeWorkerTypeError("yaml_path must be str")
+	def _params_required(self,params):
+		if "ip" not in params.keys():
+			raise NodeWorkerValueError("params dict must have ip key.")
+		if "port" not in params.keys():
+			raise NodeWorkerValueError("params dict must have port key.")
+		if "mode" not in params.keys():
+			raise NodeWorkerValueError("params dict must have mode key.")
+		self._ip = params["ip"]
+		self._port = params["port"]
+		self._mode = [v for _,v in NodeMode.__members__.items() if v.value == params["mode"]]
+		if len(self._mode) != 1:
+			raise NodeWorkerTypeError("mode must be NodeMode(Enum)")
+		self._mode = self._mode[0]
+
+		if not ip_check(self._ip):
+			raise NodeWorkerValueError("IP is invalid.")
+		if not isinstance(self._port,int):
+			raise NodeWorkerTypeError("Port number mast be integer.")
+		if not isinstance(self._mode,NodeMode):
+			raise NodeWorkerTypeError("mode must be NodeMode(Enum)")
+
+
+
+
+class MySQLWorker(NodeWorker):
+	_VIRTUAL_NODECOUNT_DEFAULT=100
+	_REQUIRE_RESHARD_DEFAULT=True
+	_FUNCPATH_DEFAULT=None
+	_PING_INTERVAL_DEFAULT=0
+	_NOTICE_ARGS_DEFAULT=None
+	_NOTICE_KWARGS_DEFAULT=None
+	_SECRET_DEFAULT=False
+	_SECRET_ONCE_DEFAULT=False
+	_USER_DEFAULT=None
+	_PASSWORD_DEFAULT=None
+	"""
+	cluster_info: dict with keys[database,table,hash_column]
+	params: required data for mysql database node
+	"""
 	def __init__(
 		self,
-		ip,
-		port,
-		hash_column,
-		database,
-		table,
-		yaml_path="ip.yaml",
-		_DEBUG=False,
-		funcpath=None,
-		notice_args=[],
-		notice_kwargs={},
-		user=None,
-		password=None,
-		secret=False,
-		secret_once=False,
-		ping_interval=1,
-		virtual_nodecount=100,
-		require_reshard=True,
-		mode=NodeMode.ADD,			# how move data for node
+		cluster_info,
+		params,
+#		ip,
+#		port,
+#		hash_column,
+#		database,
+#		table,
+#		yaml_path="ip.yaml",
+#		funcpath=None,
+#		notice_args=[],
+#		notice_kwargs={},
+#		user=None,
+#		password=None,
+#		secret=False,
+#		secret_once=False,
+#		ping_interval=1,
+#		virtual_nodecount=100,
+#		require_reshard=True,
+#		mode=NodeMode.ADD,			# how move data for node
 	):
-		super().__init__(ip,database,table)
-		if not isinstance(port,int):
-			raise ValueError("PORT number must be int")
+		super().__init__()
+		self._cluster_check(cluster_info)
+		self._params_required(params)
+
+		funcpath = params["funcpath"] if "funcpath" in params.keys() else self._FUNCPATH_DEFAULT
 		if funcpath is not None:
 			self._notice = notice.Notice(funcpath)
 		else:
 			self._notice = None
-		self._notice_args = notice_args
-		self._notice_kwargs = notice_kwargs
-		self._database = database
-		self._table = table
-		self._secret = secret
-		self._virtual_nodecount = virtual_nodecount
+		self._notice_args = params["notice_args"] if "notice_args" in params.keys() else self._NOTICE_ARGS_DEFAULT
+		self._notice_kwargs = params["notice_kwargs"] if "notice_kwargs" in params.keys() else self._NOTICE_KWARGS_DEFAULT
 
-		if mode == "add":
-			self._mode = NodeMode.ADD
-		elif mode == "delete":
-			self._mode = NodeMode.DELETE
-		else:
-			raise ValueError("mode must be 'add' or 'delete'")
+		self._secret = params["secret"] if "secret" in params.keys() else self._SECRET_DEFAULT
+		self._secret_once = params["secret_once"] if "secret_once" in params.keys() else self._SECRET_ONCE_DEFAULT
+		self._virtual_nodecount = params["virtual_nodecount"] if "virtual_nodecount" in params.keys() else self._VIRTUAL_NODECOUNT_DEFAULT
+
 		# If require resharding, steal data from all real node
-		self._require_reshard = require_reshard
-		if not self.ip_check(ip):
-			print(f"not IP Address {ip}",file=sys.stderr)
-			raise Exception
-		self._yaml_path = yaml_path
+		self._require_reshard = params["require_reshard"] if "require_reshard" in params.keys() else self._REQUIRE_RESHARD_DEFAULT
+
 		try:
-			self._exists_iphashs = self._parse_yaml(yaml_path)
+			self._exists_iphashs = self._parse_yaml(self._yaml_path)
 			if self._mode == NodeMode.DELETE:
 				self._exists_topology = copy.deepcopy(self._exists_iphashs)
 		except FileNotFoundError as e:
@@ -102,36 +155,38 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 		
 		if self._mode is NodeMode.ADD:
 			# if target node in yaml format, error
-			if len([x for x in self._exists_iphashs if x["ip"] == ip]) != 0:
+			if len([x for x in self._exists_iphashs if x["ip"] == self._ip]) != 0:
 				raise ValueError("There are already target node in YAML file. target must be non exists node ip.")
 		elif self._mode is NodeMode.DELETE:
 			# if no target node in yaml format, error
-			if len([x for x in self._exists_iphashs if x["ip"] == ip]) == 0:
+			if len([x for x in self._exists_iphashs if x["ip"] == self._ip]) == 0:
 				raise ValueError("There is no target node in YAML file. Because target node is delete from existed node, it must be in YAML file.")
 		
-		target_node_ip = ip
+		target_node_ip = self._ip
 		target_node_hash = con.hash(target_node_ip.encode("utf-8"))
 		self._target_node_dict = dict()
 		self._target_node_dict["ip"] = target_node_ip
-		self._target_node_dict["port"] = port
+		self._target_node_dict["port"] = self._port
 		if self._mode is NodeMode.ADD:
 			self._target_node_dict["hash"] = [target_node_hash]
-		
-		if (self._mode is NodeMode.ADD and (user is None or password is None or secret)) or \
+
+		user = params["user"] if "user" in params.keys() else self._USER_DEFAULT
+		password = params["password"] if "password" in params.keys() else self._PASSWORD_DEFAULT
+		if (self._mode is NodeMode.ADD and (user is None or password is None or self._secret)) or \
 			(self._mode is NodeMode.DELETE and ((len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x["password"] is not None]) == 0) or \
 				(len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x ["password"] is not None]) == 0))):
-			res = userpass.secret_userpass(target_node_ip,port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
+			res = userpass.secret_userpass(target_node_ip,self._port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
 			user = res["user"]
 			password = res["password"]
 		self._target_node_dict["user"] = user
 		self._target_node_dict["password"] = password
 
-		ping.ping(ip,port,user,password,self._database)
+		ping.ping(self._ip,self._port,user,password,self._database)
 
 		# get scheme
 		self._columns = clms.MySQLColumns(
 			ip=target_node_ip,
-			port=port,
+			port=self._port,
 			database=self._database,
 			table=self._table,
 			user=user,
@@ -152,7 +207,7 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 				raise ValueError("Ther is only one node.If delete this node, all data will be gone.")
 
 		# If resharding, delete virtual node
-		if require_reshard:
+		if self._require_reshard:
 			for node in self._exists_iphashs:
 				node_hash = con.hash(node["ip"].encode("utf-8"))
 				node["hash"] = [node_hash]
@@ -165,6 +220,7 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 		self._ipuser = dict()
 		self._ippass = dict()
 
+		ping_interval = params["ping_interval"] if "ping_interval" in params.keys() else self._PING_INTERVAL_DEFAULT
 		_iphashs = self._mode_iphashs
 		for node in _iphashs:
 			self._ipport[node["ip"]] = node["port"]
@@ -177,12 +233,12 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 				if ("user" not in node.keys() or \
 					"password" not in node.keys() or \
 						node["user"] is None or node["password"] is None \
-							or secret) \
-					and (secret_once is False):
+							or self._secret) \
+					and (self._secret_once is False):
 					res = userpass.secret_userpass(node["ip"],node["port"],self._database,userpassstr)
 					node["user"] = res["user"]
 					node["password"] = res["password"]
-				elif secret_once:
+				elif self._secret_once:
 					node["user"] = user
 					node["password"] = password
 				self._set_another_dict(node)
@@ -196,8 +252,6 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 				iphashs_set.add(node["ip"])
 		
 		self._conn = None
-		self._hash_column = hash_column
-		self._DEBUG = _DEBUG
 		self._steal_ip = set()
 		self._steal_query = dict()
 		self._insert_ip = set()
@@ -205,7 +259,7 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 		self._total_data_count = dict()
 		self._deplica_insert = dict()
 
-		self._virtual_node(virtual_nodecount)
+		self._virtual_node(self._virtual_nodecount)
 		self._ip_query = dict()
 		self._total_transaction = self._real_steal_query()
 		self._steal_dataset = dict()
@@ -238,14 +292,7 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 					}
 				)
 			_haship = sorted(_haship,key=lambda x:x["hash"])
-#			_haship = self._virtual_haship
 			return _haship
-			_haship = dict()
-			iphashs = self._exists_topology
-			for node in iphashs:
-				for hash in node["hash"]:
-					_haship[hash] = node["ip"]
-			_haship = sorted(_haship.items())
 		return _haship
 	# node Having data now sorted list
 	@property
@@ -277,12 +324,6 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 	def exists_iphashs(self):
 		return self._exists_iphashs
 
-	@classmethod	
-	def ip_check(self,ip):
-		if re.match(r'^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$',ip):
-			return True
-		else:
-			return False
 	def _parse_yaml(self,path):
 		return parse.parse_yaml(path)
 	
@@ -352,8 +393,6 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 			if hash <= hav["hash"]:
 				return hav["ip"]
 	def _real_steal_query(self):
-		HASH_INDEX=0
-		IP_INDEX=1
 		self._virtual_org()
 		# get nodes that having a data now (before moving.).Sorted by hashid.
 		# [{'hash': `HASH`,ip: `IP`}]
@@ -367,7 +406,6 @@ class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 			print(haship)
 		for iphash in self._virtual_iphashs:
 			print(iphash)
-		haveset = set()
 		# loog node that after moving.
 		for i in range(target_len):
 			# target node Hash and IP in after moving
