@@ -1,4 +1,6 @@
 import argparse
+from unittest import result
+from yaml import resolver
 
 from yaml.nodes import Node
 import parse
@@ -220,7 +222,16 @@ class MySQLAddNode(test.MySQLConsistency):
 		if self._mode is NodeMode.ADD:
 			_haship = self._virtual_haship
 		elif self._mode is NodeMode.DELETE:
-			_haship = self._virtual_haship
+			_haship = list()
+			for node in self._virtual_haship:
+				_haship.append(
+					{
+						"ip": node[1],
+						"hash": node[0]
+					}
+				)
+			_haship = sorted(_haship,key=lambda x:x["hash"])
+#			_haship = self._virtual_haship
 			return _haship
 			_haship = dict()
 			iphashs = self._exists_topology
@@ -315,12 +326,24 @@ class MySQLAddNode(test.MySQLConsistency):
 		for j in range(len(having_order)):
 			if self._mode == NodeMode.ADD:
 				if having_order[j]["hash"] >= target_hash:
-					return j
+					return [j]
 			elif self._mode == NodeMode.DELETE:
-				if having_order[j]["hash"] >= target_hash:
-					return j
-		return 0
-
+				results = list()
+				if having_order[j]["hash"] > target_hash:
+					results.append(j)
+					nondelete_lists = [ i for i in having_order if i["hash"] <= target_hash and "checked" not in i.keys()]
+					for ele in nondelete_lists:
+						if having_order.index(ele) not in results:
+							results.append(having_order.index(ele))
+						ele["checked"] = True
+					results.sort()
+					return results
+		return [0]
+	# received target hash, return IP of node having data greater than or equal to target hash
+	def _next_having(self,hash,having_order):
+		for hav in having_order:
+			if hash <= hav["hash"]:
+				return hav["ip"]
 	def _real_steal_query(self):
 		HASH_INDEX=0
 		IP_INDEX=1
@@ -333,29 +356,104 @@ class MySQLAddNode(test.MySQLConsistency):
 		total_transaction = list()
 		pre_trans = dict()
 
-		print(having_haship)
-		print(self._virtual_iphashs)
+		for haship in having_haship:
+			print(haship)
+		for iphash in self._virtual_iphashs:
+			print(iphash)
 		haveset = set()
 		# loog node that after moving.
 		for i in range(target_len):
 			# target node Hash and IP in after moving
 			haship = self._mode_target_haship[i]
-			matchindex = self._have_real_node(haship[HASH_INDEX],having_haship)
-			matchih = self._mode_having_haship[matchindex]
-			trans = dict()
-			if i == 0:
-				trans["minhash"] = self._mode_target_haship[-1][HASH_INDEX]
-				trans["maxhash"] = haship[HASH_INDEX]
-				trans["logical"] = Logical.OR
-			else:
-				trans["minhash"] = pre_trans["maxhash"] 
-				trans["maxhash"] = haship[HASH_INDEX]
-				trans["logical"] = Logical.AND
-			trans["steal_ip"] = matchih["ip"] 
-			trans["insert_ip"] = haship[IP_INDEX]
-			if trans["steal_ip"] != trans["insert_ip"]:
-				total_transaction.append(trans)
-			pre_trans = trans
+			matchindex = self._have_real_node(haship["hash"],having_haship)
+			for index in matchindex:
+#				print("'''''''''''''")
+				matchih = self._mode_having_haship[index]
+				trans = dict()
+				if self._mode is NodeMode.DELETE:
+					prevhash = self._mode_target_haship[i-1]
+					if i == 0:
+						nodelete_lists = [ x for x in having_haship if x["hash"] > prevhash["hash"] and "checked" not in x.keys()]
+						for ele in nodelete_lists:
+							if having_haship.index(ele) not in nodelete_lists:
+								matchindex.append(having_haship.index(ele))
+							ele["checked"] = True
+							ele["minus"] = True
+						matchindex.sort()
+						
+					previndex = matchindex.index(index) - 1 if matchindex.index(index) > 0 \
+						else -1
+					prevmatchindex = matchindex[previndex]
+					prevhaving = self._mode_having_haship[prevmatchindex]
+					if i != 0:
+						lasthash = prevhash \
+							if (matchindex.index(index) == 0 or len(matchindex) == 1 or previndex < 0) \
+								else prevhaving if prevhaving["hash"] > prevhash["hash"] \
+									else prevhash
+					else:
+						lasthash = prevhash \
+							if (matchindex.index(index) == 0 or len(matchindex) == 1 or previndex < 0) \
+								else prevhaving if prevhaving["hash"] > prevhash["hash"] \
+									else prevhash
+						if len([ele for ele in nodelete_lists if "minus" in ele.keys()]) != 0:
+							lasthash = prevhaving \
+								if prevhaving["hash"] > lasthash["hash"] else lasthash
+							eles = [ele for ele in nodelete_lists if "minus" in ele.keys()]
+							for ele in eles:
+								del ele["minus"]
+						else:
+							lasthash = prevhaving \
+								if prevhaving["hash"] < lasthash["hash"] else lasthash
+				if i == 0:
+#							if self._mode_having_haship[-1]["hash"] >= self._mode_target_haship[-1][HASH_INDEX] \
+#								else self._mode_target_haship[-1]["hash"]
+					maxhash = matchih if matchih["hash"] < haship["hash"] else haship
+					trans["minhash"] = self._mode_target_haship[-1]["hash"] if self._mode is NodeMode.ADD else lasthash["hash"]
+					trans["maxhash"] = haship["hash"] if self._mode is NodeMode.ADD else maxhash["hash"]
+					trans["logical"] = Logical.OR
+
+				else:
+#					if self._mode is NodeMode.DELETE:
+#						prevhash = self._mode_target_haship[i-1][HASH_INDEX]
+#						previndex = matchindex.index(index) - 1 if matchindex.index(index) > 0 \
+#							else -1
+#						prevmatchindex = matchindex[previndex]
+#						print(prevmatchindex)
+#						lasthash = prevhash if (index == 0 or len(matchindex) == 1 or previndex < 0) \
+#							else self._mode_having_haship[prevmatchindex]["hash"] if self._mode_having_haship[prevmatchindex]["hash"] >= prevhash \
+#								else prevhash
+					maxhash = matchih if matchih["hash"] < haship["hash"] else haship
+					trans["minhash"] = pre_trans["maxhash"] if self._mode is NodeMode.ADD else lasthash["hash"]
+					trans["maxhash"] = haship["hash"] if self._mode is NodeMode.ADD else maxhash["hash"]
+					trans["logical"] = Logical.AND
+				if i != 0 and trans["minhash"] >= trans["maxhash"]:
+					continue
+				trans["steal_ip"] = matchih["ip"] if self._mode is NodeMode.ADD else self._next_having(trans["maxhash"],having_haship)
+				trans["insert_ip"] = haship["ip"] if self._mode is NodeMode.ADD else haship["ip"]
+#				print(trans["minhash"])
+#				print(trans["maxhash"])
+#				print(trans["steal_ip"])
+#				print(trans["insert_ip"])
+				if trans["steal_ip"] != trans["insert_ip"]:
+					total_transaction.append(trans)
+				pre_trans = trans
+		if self._mode is NodeMode.DELETE:
+			extralists = [x for x in having_haship if x["hash"] > self._mode_target_haship[-1]["hash"]]
+			extralists = sorted(extralists,key=lambda x:x["hash"])
+			pre_trans = dict()
+			if len(extralists) != 0:
+				for extra in extralists:
+					trans = dict()
+#					print("'''''''''''''")
+					trans["minhash"] = self._mode_target_haship[-1]["hash"] if "maxhash" not in pre_trans.keys() else pre_trans["maxhash"]
+					trans["maxhash"] = extra["hash"]
+					trans["logical"] = Logical.AND
+					trans["steal_ip"] = extra["ip"]
+					trans["insert_ip"] = self._mode_target_haship[0]["ip"]
+					if trans["steal_ip"] != trans["insert_ip"]:
+						total_transaction.append(trans)
+#					print(trans["minhash"])
+#					print(trans["maxhash"])
 		
 		for trans in total_transaction:
 			print(trans)
