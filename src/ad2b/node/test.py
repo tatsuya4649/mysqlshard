@@ -1,5 +1,5 @@
 import hashlib
-import ip as ipm
+from . import ip as ipm
 import pymysql
 
 class ConsistencyError(Exception):

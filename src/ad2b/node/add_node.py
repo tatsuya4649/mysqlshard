@@ -3,18 +3,18 @@ from unittest import result
 from yaml import resolver
 
 from yaml.nodes import Node
-import parse
 import re
 import sys
 import copy
 import pymysql
-import test
-import choice
-import userpass
-import notice
-import ping
-import columns as clms
-from algo import con
+from . import parse
+from . import test
+from . import choice
+from . import userpass
+from . import notice
+from . import ping
+from . import columns as clms
+from .algo import con
 import time
 import shutil
 from enum import Enum
@@ -26,7 +26,14 @@ class Logical(Enum):
 	AND			= "and"
 	OR			= "or"
 
-class MySQLAddNode(test.MySQLConsistency):
+class NodeWorker:
+	def __init__(*args,**kwargs):
+		print(args)
+		print(kwargs)
+	def work(self):
+		print("work now")
+
+class MySQLAddNode(test.MySQLConsistency,NodeWorker):
 	def __init__(
 		self,
 		ip,
