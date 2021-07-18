@@ -1,5 +1,5 @@
 import yaml
-from .cluster import NodeOperation,MySQLOperation
+from .nodeope import NodeOperation,MySQLOperation
 from .err import ClusterOpsFileError,ClusterOpsTypeError,ClusterOperationError
 from .type import OperationType
 
