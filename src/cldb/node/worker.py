@@ -16,6 +16,7 @@ from . import ping
 from . import columns as clms
 from .ip import ip_check
 from .algo import con
+from utils.parse import parse_bool 
 import time
 import shutil
 from enum import Enum
@@ -29,6 +30,15 @@ class Logical(Enum):
 	OR			= "or"
 
 class NodeWorker:
+	"""
+	Parameter required by the NodeWorker: cluster_info,params
+	---
+	
+	Required key of cluster_info:
+		database,table,hash_column,cluster_yaml
+	Required key of params:
+		ip,port,mode
+	"""
 	def work(self):
 		raise NotImplementedError("work must be implemented.")
 	def _cluster_check(self,cluster_info):
@@ -76,9 +86,15 @@ class NodeWorker:
 			raise NodeWorkerTypeError("mode must be NodeMode(Enum)")
 
 
-
-
 class MySQLWorker(NodeWorker):
+	"""
+	Optional parameter of MySQLWorker: params["option"]
+	---
+
+	params["option"]: dict type. these parameters control operate.
+	"""
+	doclists = [NodeWorker.__doc__ if NodeWorker.__doc__ is not None else "",__doc__]
+	__doc__ = "".join(doclists)
 	_VIRTUAL_NODECOUNT_DEFAULT=100
 	_REQUIRE_RESHARD_DEFAULT=True
 	_FUNCPATH_DEFAULT=None
@@ -87,52 +103,34 @@ class MySQLWorker(NodeWorker):
 	_NOTICE_KWARGS_DEFAULT=None
 	_SECRET_DEFAULT=False
 	_SECRET_ONCE_DEFAULT=False
+	_UPDATE_DEFAULT=True
 	_USER_DEFAULT=None
 	_PASSWORD_DEFAULT=None
-	"""
-	cluster_info: dict with keys[database,table,hash_column]
-	params: required data for mysql database node
-	"""
 	def __init__(
 		self,
 		cluster_info,
 		params,
-#		ip,
-#		port,
-#		hash_column,
-#		database,
-#		table,
-#		yaml_path="ip.yaml",
-#		funcpath=None,
-#		notice_args=[],
-#		notice_kwargs={},
-#		user=None,
-#		password=None,
-#		secret=False,
-#		secret_once=False,
-#		ping_interval=1,
-#		virtual_nodecount=100,
-#		require_reshard=True,
-#		mode=NodeMode.ADD,			# how move data for node
 	):
 		super().__init__()
+		option = params["option"] if "option" in params.keys() else None
 		self._cluster_check(cluster_info)
 		self._params_required(params)
 
-		funcpath = params["funcpath"] if "funcpath" in params.keys() else self._FUNCPATH_DEFAULT
+		funcpath = option["funcpath"] if option is not None and "funcpath" in option.keys() else self._FUNCPATH_DEFAULT
 		if funcpath is not None:
 			self._notice = notice.Notice(funcpath)
 		else:
 			self._notice = None
-		self._notice_args = params["notice_args"] if "notice_args" in params.keys() else self._NOTICE_ARGS_DEFAULT
-		self._notice_kwargs = params["notice_kwargs"] if "notice_kwargs" in params.keys() else self._NOTICE_KWARGS_DEFAULT
+		self._notice_args = option["notice_args"] if option is not None and "notice_args" in option.keys() else self._NOTICE_ARGS_DEFAULT
+		self._notice_kwargs = option["notice_kwargs"] if option is not None and "notice_kwargs" in option.keys() else self._NOTICE_KWARGS_DEFAULT
 
-		self._secret = params["secret"] if "secret" in params.keys() else self._SECRET_DEFAULT
-		self._secret_once = params["secret_once"] if "secret_once" in params.keys() else self._SECRET_ONCE_DEFAULT
-		self._virtual_nodecount = params["virtual_nodecount"] if "virtual_nodecount" in params.keys() else self._VIRTUAL_NODECOUNT_DEFAULT
+		self._secret = parse_bool(option["secret"]) if option is not None and "secret" in option.keys() else self._SECRET_DEFAULT
+		self._secret_once = parse_bool(option["secret_once"]) if option is not None and  "secret_once" in params.keys() else self._SECRET_ONCE_DEFAULT
+		self._update = parse_bool(option["update"]) if option is not None and "update" in option.keys() else self._UPDATE_DEFAULT
+		self._virtual_nodecount = option["virtual_nodecount"] if option is not None and  "virtual_nodecount" in params.keys() else self._VIRTUAL_NODECOUNT_DEFAULT
 
 		# If require resharding, steal data from all real node
-		self._require_reshard = params["require_reshard"] if "require_reshard" in params.keys() else self._REQUIRE_RESHARD_DEFAULT
+		self._require_reshard = parse_bool(option["require_reshard"]) if option is not None and  "require_reshard" in params.keys() else self._REQUIRE_RESHARD_DEFAULT
 
 		try:
 			self._exists_iphashs = self._parse_yaml(self._yaml_path)
@@ -170,8 +168,8 @@ class MySQLWorker(NodeWorker):
 		if self._mode is NodeMode.ADD:
 			self._target_node_dict["hash"] = [target_node_hash]
 
-		user = params["user"] if "user" in params.keys() else self._USER_DEFAULT
-		password = params["password"] if "password" in params.keys() else self._PASSWORD_DEFAULT
+		user = option["user"] if option is not None and "user" in option.keys() else self._USER_DEFAULT
+		password = option["password"] if option is not None and "password" in option.keys() else self._PASSWORD_DEFAULT
 		if (self._mode is NodeMode.ADD and (user is None or password is None or self._secret)) or \
 			(self._mode is NodeMode.DELETE and ((len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x["password"] is not None]) == 0) or \
 				(len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x ["password"] is not None]) == 0))):
@@ -220,7 +218,7 @@ class MySQLWorker(NodeWorker):
 		self._ipuser = dict()
 		self._ippass = dict()
 
-		ping_interval = params["ping_interval"] if "ping_interval" in params.keys() else self._PING_INTERVAL_DEFAULT
+		ping_interval = option["ping_interval"] if option is not None and "ping_interval" in option.keys() else self._PING_INTERVAL_DEFAULT
 		_iphashs = self._mode_iphashs
 		for node in _iphashs:
 			self._ipport[node["ip"]] = node["port"]
@@ -260,9 +258,7 @@ class MySQLWorker(NodeWorker):
 		self._deplica_insert = dict()
 
 		self._virtual_node(self._virtual_nodecount)
-		self._ip_query = dict()
 		self._total_transaction = self._real_steal_query()
-		self._steal_dataset = dict()
 		
 	@property
 	def _mode_iphashs(self):
@@ -336,20 +332,26 @@ class MySQLWorker(NodeWorker):
 	def _virtual_node(self,count):
 		total = 0
 		virtual_iphashs = copy.deepcopy(self._new_iphashs)
-		virtual_haship = dict()
+		virtual_haship = list()
 		for obj in virtual_iphashs:
 			total += len(obj["hash"])
 			for hash in obj["hash"]:
-				virtual_haship[hash] = obj["ip"]
+				virtual_haship.append({
+					"hash": hash,
+					"ip": obj["ip"]
+				})
 		while total < count:
 			for obj in virtual_iphashs:
 				virtual_hash = self._virtual_node_hash(obj["ip"],total)
-				virtual_haship[virtual_hash] = obj["ip"]
+				virtual_haship.append({
+					"hash": virtual_hash,
+					"ip": obj["ip"]
+				})
 				obj["hash"].append(virtual_hash)
 				print(f'{obj["ip"]}: {virtual_hash}')
 				total += 1
 		# This is the node info that is distination of moving data
-		self._virtual_haship = sorted(virtual_haship.items())
+		self._virtual_haship = sorted(virtual_haship,key=lambda x:x["hash"])
 		self._virtual_iphashs = virtual_iphashs
 	
 	# return array of dict(All IP and virtual hashs list)
@@ -402,10 +404,10 @@ class MySQLWorker(NodeWorker):
 		total_transaction = list()
 		pre_trans = dict()
 
-		for haship in having_haship:
-			print(haship)
-		for iphash in self._virtual_iphashs:
-			print(iphash)
+#		for haship in having_haship:
+#			print(haship)
+#		for iphash in self._virtual_iphashs:
+#			print(iphash)
 		# loog node that after moving.
 		for i in range(target_len):
 			# target node Hash and IP in after moving
@@ -500,8 +502,8 @@ class MySQLWorker(NodeWorker):
 #					print(trans["minhash"])
 #					print(trans["maxhash"])
 		
-		for trans in total_transaction:
-			print(trans)
+#		for trans in total_transaction:
+#			print(trans)
 		return total_transaction
 
 	@property
@@ -797,14 +799,14 @@ class MySQLWorker(NodeWorker):
 
 
 	# Steal,Insert,Delete
-	def sid(self,script=True,update=True):
+	def sid(self,update=True):
 		self._check_trans()
 		for trans in self._total_transaction:
 			trans["complete"] = False
 		
 		self._init_contest_data()
 		after_totalcount = copy.deepcopy(self._total_data_count)
-
+		
 		for trans in self._total_transaction:
 			try:
 				steal_len = self.steal_data(trans)
@@ -854,10 +856,9 @@ class MySQLWorker(NodeWorker):
 		else:
 			print(f'\rTotal Data Count: {aftertotal}')
 
-		if script:
-			# Notification script for increment node
-			if self._notice is not None:
-				self._notice(*self._notice_args,**self._notice_kwargs)
+		# Notification script for increment node
+		if self._notice is not None:
+			self._notice(*self._notice_args,**self._notice_kwargs)
 		if update:
 			self._update_yaml()
 
@@ -882,3 +883,9 @@ class MySQLWorker(NodeWorker):
 			vnode_iphashs.append(vnode)
 
 		parse.update_yaml(self._yaml_path,vnode_iphashs)
+
+	def work(self):
+		print("MySQL Sharding Now.")
+		if not hasattr(self,"_update"):
+			raise ValueError("not found variable of bool whether update yaml after sharding.")
+		self.sid(update=self._update)

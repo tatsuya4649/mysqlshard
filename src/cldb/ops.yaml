@@ -1,12 +1,13 @@
 type: mysql
-database: example
+database: sharding
 table: user
 hash_column: hash_username
-cluster_yaml: "./ip.yaml"
+cluster_yaml: "./cluster.yaml"
 ops:
-- ip: "127.0.0.1"
-  port: 3306
+- ip: 172.25.0.1
+  port: 23306
   mode: add
-- ip: "23.123.32.1"
-  port: 3306
-  mode: add
+  user: root
+  password: mysql
+  secret: False
+  secret_once: True

@@ -1,4 +1,5 @@
 import yaml
+import re
 from .nodeope import NodeOperation,MySQLOperation
 from .err import ClusterOpsFileError,ClusterOpsTypeError,ClusterOperationError
 from .type import OperationType
@@ -52,6 +53,7 @@ def yaml_to_ops(path):
 				ip=ip,
 				port=port,
 				mode=mode,
+				option=ops,
 			)
 		else:
 			raise ClusterTypeError("invalid operation type.")
@@ -100,6 +102,6 @@ def _get_operation(ops):
 	return ops["ip"],ops["port"],ops["mode"]
 
 __all__ = [
-	yaml_to_ops.__name__
+	yaml_to_ops.__name__,
 ]
 

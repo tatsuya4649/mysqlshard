@@ -5,6 +5,8 @@ import sys
 
 cluinfo,ops = yaml_to_ops("./ops.yaml")
 print(ops)
+print(MySQLWorker.__doc__)
+sys.exit(1)
 
 print("=============== Operate Cluster ==============")
 

@@ -6,10 +6,10 @@ import inspect
 
 class Cluster:
 	"""
-		required:
-			_operation_lists: for node operations
-			[NodeOperation,...]
-			cluster_info: "database","table","hash_column", etc...
+	required:
+		_operation_lists: for node operations
+		[NodeOperation,...]
+		cluster_info: "database","table","hash_column", etc...
 	"""
 	def __init__(self,cluster_info):
 		self._opelen = 0
@@ -99,4 +99,5 @@ __all__ = [
 	MySQLCluster.__name__,
 	NodeMode.__name__,
 	NodeWorker.__name__,
+	MySQLWorker.__name__,
 ]
