@@ -3,6 +3,7 @@ database: sharding
 table: user
 hash_column: hash_username
 cluster_yaml: "./cluster.yaml"
+virtual_nodecount: 10
 ops:
 - ip: 172.25.0.1
   port: 23306
@@ -11,3 +12,8 @@ ops:
   password: mysql
   secret: False
   secret_once: True
+  funcpath: ./notice.sh
+  notice_args:
+  - argumnet1
+  update: True
+  ping_interval: 1

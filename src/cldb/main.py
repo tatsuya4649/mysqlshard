@@ -74,6 +74,11 @@ def without_ops_yaml(parser,args):
 		print("\nThere is no cluster yame path.",file=sys.stderr)
 		sys.exit()
 	cluster_info["cluster_yaml"] = args.cluster_yaml
+	if args.virtual_nodecount is None:
+		paeser.print_help()
+		print("\nThere is no virtual node count.",file=sys.stderr)
+		sys.exit()
+	cluster_info["virtual_nodecount"] = args.virtual_nodecount
 	_call_cluster(cluster_info,[operate])
 
 def main():

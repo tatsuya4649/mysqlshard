@@ -1,8 +1,11 @@
 import yaml
 import re
 from .nodeope import NodeOperation,MySQLOperation
-from .err import ClusterOpsFileError,ClusterOpsTypeError,ClusterOperationError
+from .err import ClusterOpsFileError,ClusterOpsTypeError,ClusterOperationError, ClusterOpsYAMLError
 from .type import OperationType
+
+_VIRTUAL_NODECOUNT_DEFAULT=100
+_CLUSTER_UPDATE_DEFAULT=True
 
 def yaml_to_ops(path):
 	"""
@@ -16,6 +19,7 @@ def yaml_to_ops(path):
 	table: user
 	hash_column: hash_username
 	cluster_yaml: "./cluster.yaml"
+	virtual_nodecount: 10
 	ops:
 	- ip: "127.0.0.1"
 	  port: 3306
@@ -35,6 +39,7 @@ def yaml_to_ops(path):
 	_check_table(obj)
 	_check_hash_column(obj)
 	_check_cluster_yaml(obj)
+	_check_virtual_nodecount(obj)
 
 	type = obj["type"]
 	if type == OperationType.MYSQL.value:
@@ -47,7 +52,7 @@ def yaml_to_ops(path):
 	lists = list()
 	for ops in obj["ops"]:
 		_check_operation(ops)
-		ip,port,mode = _get_operation(ops)
+		ip,port,mode,virtual_nodecount = _get_operation(ops)
 		if type is OperationType.MYSQL:
 			operation = MySQLOperation(
 				ip=ip,
@@ -66,6 +71,8 @@ def yaml_to_ops(path):
 		"table": obj["table"],
 		"hash_column": obj["hash_column"],
 		"cluster_yaml": obj["cluster_yaml"],
+		"virtual_nodecount": obj["virtual_nodecount"] if "virtual_nodecount" in obj.keys() else _VIRTUAL_NODECOUNT_DEFAULT,
+		"cluster_update": obj["cluster_update"] if "cluster_update" in obj.keys() else _CLUSTER_UPDATE_DEFAULT
 	}
 	return cluster_info,lists
 
@@ -97,11 +104,24 @@ def _check_operation(ops):
 		raise ClusterOpsYAMLError('must have \"port\" in \"ops\"')
 	if "mode" not in ops.keys():
 		raise ClusterOpsYAMLError('must have \"mode\" in \"ops\"')
+def _check_virtual_nodecount(obj):
+	if "virtual_nodecount" in obj.keys() and not isinstance(obj["virtual_nodecount"],int):
+		raise ClusterOpsYAMLError('\"virtual_nodecount\" must be int type in YAML')
 
 def _get_operation(ops):
-	return ops["ip"],ops["port"],ops["mode"]
+	return ops["ip"],ops["port"],ops["mode"],ops["virtual_nodecount"] if "virtual_nodecount" in ops.keys() else _VIRTUAL_NODECOUNT_DEFAULT
+
+def update_cluster_yaml(path,lists):
+	if not isinstance(lists,list):
+		raise ClusterOpsYAMLError("Update cluster yaml info must be list type.")
+	newips = dict()
+	newips["cluster"] = lists
+	with open(path,"w") as yf:
+		yaml.dump(newips,yf,default_flow_style=False)
+
 
 __all__ = [
 	yaml_to_ops.__name__,
+	update_cluster_yaml.__name__,
 ]
 

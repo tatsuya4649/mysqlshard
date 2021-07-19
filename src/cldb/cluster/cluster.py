@@ -1,8 +1,10 @@
 from node import NodeMode,NodeWorker
 from .err import *
 from .nodeope import *
+from .parse import *
 from node import *
 import inspect
+import sys
 
 class Cluster:
 	"""
@@ -19,6 +21,8 @@ class Cluster:
 		self._table = cluster_info["table"]
 		self._hash_column = cluster_info["hash_column"]
 		self._cluster_yaml = cluster_info["cluster_yaml"]
+		self._virtual_nodecount = cluster_info["virtual_nodecount"]
+		self._cluster_update = cluster_info["cluster_update"]
 	# check have a operation lists
 	def _require_operation_lists(func):
 		def _check(self,*args,**kwargs):
@@ -45,7 +49,9 @@ class Cluster:
 
 		params = self._operate()
 		work_ins = self._worker(self._cluster_info,params)
-		work_ins.work()
+		update_cluster = work_ins.work()
+		if self._cluster_update:
+			update_cluster_yaml(self._cluster_yaml,update_cluster)
 
 		self._operate = None
 

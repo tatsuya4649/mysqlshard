@@ -50,11 +50,14 @@ class NodeWorker:
 			raise NodeWorkerValueError("cluster_info dict must have hash_column key.")
 		if "cluster_yaml" not in cluster_info.keys():
 			raise NodeWorkerValueError("params dict must have yaml_path key.")
+		if "virtual_nodecount" not in cluster_info.keys():
+			raise NodeWorkerValueError("params dict must have virtual_nodecount key.")
 
 		self._database = cluster_info["database"]
 		self._table = cluster_info["table"]
 		self._hash_column = cluster_info["hash_column"]
 		self._yaml_path = cluster_info["cluster_yaml"]
+		self._virtual_nodecount = cluster_info["virtual_nodecount"]
 
 		if not isinstance(self._database,str):
 			raise NodeWorkerTypeError("Database mast be string.")
@@ -64,6 +67,8 @@ class NodeWorker:
 			raise NodeWorkerTypeError("Hash Column mast be string.")
 		if not isinstance(self._yaml_path,str):
 			raise NodeWorkerTypeError("yaml_path must be str")
+		if not isinstance(self._virtual_nodecount,int):
+			raise NodeWorkerTypeError("virtual_nodecount must be int")
 	def _params_required(self,params):
 		if "ip" not in params.keys():
 			raise NodeWorkerValueError("params dict must have ip key.")
@@ -92,6 +97,16 @@ class MySQLWorker(NodeWorker):
 	---
 
 	params["option"]: dict type. these parameters control operate.
+		- funcpath
+		- notice_args
+		- notice_kwargs
+		- secret
+		- secret_once
+		- virtual_nodecount
+		- require_reshard
+		- user
+		- password
+		- ping_interval
 	"""
 	doclists = [NodeWorker.__doc__ if NodeWorker.__doc__ is not None else "",__doc__]
 	__doc__ = "".join(doclists)
@@ -99,11 +114,11 @@ class MySQLWorker(NodeWorker):
 	_REQUIRE_RESHARD_DEFAULT=True
 	_FUNCPATH_DEFAULT=None
 	_PING_INTERVAL_DEFAULT=0
-	_NOTICE_ARGS_DEFAULT=None
-	_NOTICE_KWARGS_DEFAULT=None
+	_NOTICE_ARGS_DEFAULT=[]
+	_NOTICE_KWARGS_DEFAULT={}
 	_SECRET_DEFAULT=False
 	_SECRET_ONCE_DEFAULT=False
-	_UPDATE_DEFAULT=True
+#	_UPDATE_DEFAULT=True
 	_USER_DEFAULT=None
 	_PASSWORD_DEFAULT=None
 	def __init__(
@@ -125,12 +140,11 @@ class MySQLWorker(NodeWorker):
 		self._notice_kwargs = option["notice_kwargs"] if option is not None and "notice_kwargs" in option.keys() else self._NOTICE_KWARGS_DEFAULT
 
 		self._secret = parse_bool(option["secret"]) if option is not None and "secret" in option.keys() else self._SECRET_DEFAULT
-		self._secret_once = parse_bool(option["secret_once"]) if option is not None and  "secret_once" in params.keys() else self._SECRET_ONCE_DEFAULT
-		self._update = parse_bool(option["update"]) if option is not None and "update" in option.keys() else self._UPDATE_DEFAULT
-		self._virtual_nodecount = option["virtual_nodecount"] if option is not None and  "virtual_nodecount" in params.keys() else self._VIRTUAL_NODECOUNT_DEFAULT
+		self._secret_once = parse_bool(option["secret_once"]) if option is not None and  "secret_once" in option.keys() else self._SECRET_ONCE_DEFAULT
+#		self._update = parse_bool(option["update"]) if option is not None and "update" in option.keys() else self._UPDATE_DEFAULT
 
 		# If require resharding, steal data from all real node
-		self._require_reshard = parse_bool(option["require_reshard"]) if option is not None and  "require_reshard" in params.keys() else self._REQUIRE_RESHARD_DEFAULT
+		self._require_reshard = parse_bool(option["require_reshard"]) if option is not None and  "require_reshard" in option.keys() else self._REQUIRE_RESHARD_DEFAULT
 
 		try:
 			self._exists_iphashs = self._parse_yaml(self._yaml_path)
@@ -227,7 +241,6 @@ class MySQLWorker(NodeWorker):
 		for node in _iphashs:
 			if node["ip"] in iphashs_set: continue
 			if node["ip"] != target_node_ip:
-				time.sleep(ping_interval)
 				if ("user" not in node.keys() or \
 					"password" not in node.keys() or \
 						node["user"] is None or node["password"] is None \
@@ -244,6 +257,7 @@ class MySQLWorker(NodeWorker):
 				self._ippass[node["ip"]] = node["password"]
 				ping.ping(node["ip"],node["port"],node["user"],node["password"],self._database)
 				iphashs_set.add(node["ip"])
+				time.sleep(ping_interval)
 			else:
 				self._ipuser[target_node_ip] = user 
 				self._ippass[target_node_ip] = password 
@@ -799,7 +813,7 @@ class MySQLWorker(NodeWorker):
 
 
 	# Steal,Insert,Delete
-	def sid(self,update=True):
+	def sid(self):
 		self._check_trans()
 		for trans in self._total_transaction:
 			trans["complete"] = False
@@ -859,8 +873,8 @@ class MySQLWorker(NodeWorker):
 		# Notification script for increment node
 		if self._notice is not None:
 			self._notice(*self._notice_args,**self._notice_kwargs)
-		if update:
-			self._update_yaml()
+#		if update:
+#			self._update_yaml()
 
 	def _update_yaml(self):
 		new_iphashs = copy.deepcopy(self._new_iphashs)
@@ -881,11 +895,9 @@ class MySQLWorker(NodeWorker):
 				vnode["user"] = self._ipuser[node["ip"]]
 				vnode["password"] = self._ippass[node["ip"]]
 			vnode_iphashs.append(vnode)
-
-		parse.update_yaml(self._yaml_path,vnode_iphashs)
+		return vnode_iphashs
+#		parse.update_yaml(self._yaml_path,vnode_iphashs)
 
 	def work(self):
-		print("MySQL Sharding Now.")
-		if not hasattr(self,"_update"):
-			raise ValueError("not found variable of bool whether update yaml after sharding.")
-		self.sid(update=self._update)
+		self.sid()
+		return self._update_yaml()
