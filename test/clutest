@@ -1,5 +1,12 @@
 #!/bin/bash
 
+CLDB=../src/cldb
+
+if [ -n "$OPSYAML" ]; then
+	python $CLDB -o $OPSYAML
+	exit 1
+fi
+
 YAMLFILE="./ip.yaml"
 if ! [ -f "$YAMLFILE" ]; then
 	make clean
@@ -38,7 +45,7 @@ cat $YAMLFILE
 
 USER=root
 PASSWORD=mysql
-python ad2b 	\
+python $CLDB 	\
 		--ip $NODEIP \
 		--port $PORT \
 		--yaml_path $YAMLFILE \

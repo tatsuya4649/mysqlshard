@@ -52,29 +52,7 @@ def without_ops_yaml(parser,args):
 		"port":args.port,
 		"mode": mode,
 	}
-
-	cluster_info = dict()
-	if args.database is None:
-		paeser.print_help()
-		print("\nThere is no database name.",file=sys.stderr)
-		sys.exit()
-	cluster_info["database"] = args.database
-	if args.table is None:
-		paeser.print_help()
-		print("\nThere is no table name.",file=sys.stderr)
-		sys.exit()
-	cluster_info["table"] = args.table
-	if args.hash_column is None:
-		paeser.print_help()
-		print("\nThere is no hash column name.",file=sys.stderr)
-		sys.exit()
-	cluster_info["hash_column"] = args.hash_column
-	if args.cluster_yaml is None:
-		paeser.print_help()
-		print("\nThere is no cluster yame path.",file=sys.stderr)
-		sys.exit()
-	cluster_info["cluster_yaml"] = args.cluster_yaml
-	_call_cluster(cluster_info,[operate])
+	print(cluster_info)
 
 def main():
 	parser = argparse.ArgumentParser(description="Sharding Database")

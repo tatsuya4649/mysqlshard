@@ -137,7 +137,7 @@ class MySQLWorker(NodeWorker):
 			if self._mode == NodeMode.DELETE:
 				self._exists_topology = copy.deepcopy(self._exists_iphashs)
 		except FileNotFoundError as e:
-			raise FileNotFoundError
+			raise FileNotFoundError(f"not found cluster yaml file.({self._yaml_path})")
 
 		# check YAML format
 		if not isinstance(self._exists_iphashs,list):
