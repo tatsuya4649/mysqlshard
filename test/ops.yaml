@@ -1,18 +1,24 @@
-type: mysql
+cluster_update: true
+cluster_yaml: ./cluster.yaml
+create_counter_yaml: true
 database: sharding
-table: user
 hash_column: hash_username
-cluster_yaml: "./cluster.yaml"
-virtual_nodecount: 10
-user: root
-password: mysql
-create_counter_yaml: True
 ops:
 - ip: 172.20.0.1
-  port: 23306
   mode: add
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
+  option:
+    ip: 172.20.0.1
+    mode: add
+    non_check: false
+    ping_interval: 0
+    port: 23306
+    require_reshard: true
+    secret: false
+    secret_once: true
+    update: true
+  port: 23306
+password: mysql
+table: user
+type: mysql
+user: root
+virtual_nodecount: 10

@@ -739,19 +739,35 @@ class MySQLWorker(NodeWorker):
 		)
 		# Get fromgg data from not steal_ip
 		# So, may duplicate data, delete insert_data from insert_ip
-		if "steal_fake" in trans.keys() or self._require_reshard:
-			for steal_ip in trans["steal_fake"].keys():
-				query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
-				try:
-					with self._conn.cursor() as cursor:
-						sql = f"DELETE FROM {self._table} WHERE {query}"
-						self._conn.begin()
-						cursor.execute(sql)
-						self._conn.commit()
-				except Exception as e:
-					res_list.append(0)
-					print(e)
-					time.sleep(wait_printtime)
+		print(trans["steal_fake"])
+		if "steal_fake" in trans.keys() or self._require_reshard or hasattr(self,"_total_ip_list"):
+			if self._require_reshard:
+				for node in self._total_ip_list:
+					steal_ip = node["ip"]
+					query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
+					try:
+						with self._conn.cursor() as cursor:
+							sql = f"DELETE FROM {self._table} WHERE {query}"
+							self._conn.begin()
+							cursor.execute(sql)
+							self._conn.commit()
+					except Exception as e:
+						res_list.append(0)
+						print(e)
+						time.sleep(wait_printtime)
+			else:
+				for steal_ip in trans["steal_fake"].keys():
+					query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
+					try:
+						with self._conn.cursor() as cursor:
+							sql = f"DELETE FROM {self._table} WHERE {query}"
+							self._conn.begin()
+							cursor.execute(sql)
+							self._conn.commit()
+					except Exception as e:
+						res_list.append(0)
+						print(e)
+						time.sleep(wait_printtime)
 		complete_list = list()
 		for insert_data in trans["steal_data"]:
 			if insert_data not in complete_list:
@@ -928,6 +944,7 @@ class MySQLWorker(NodeWorker):
 
 		for trans in self._total_transaction:
 			try:
+				print(trans)
 				steal_len = self.steal_data(trans)
 				if steal_len == 0:
 					continue

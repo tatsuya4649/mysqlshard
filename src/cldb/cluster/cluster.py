@@ -82,7 +82,6 @@ class Cluster:
 		if self._cluster_update:
 			update_cluster_yaml(self._cluster_yaml,update_cluster)
 		self._operate = None
-		sys.exit(1)
 		return update_cluster
 
 	# required: 
@@ -96,7 +95,7 @@ class Cluster:
 		for operate in self._operation_lists:
 			index = self._operation_lists.index(operate)
 			# moving data only last
-			if len(self._operation_lists) > 1 and self._operation_lists[index] != self._operation_lists[-1]:
+			if len(self._operation_lists)>1  and index!=len(self._operation_lists)-1:
 				update_cluster = self._only_update_cluster(operate)
 			else:
 				self._work(operate)

@@ -1,7 +1,13 @@
 database: sharding
 hash_column: hash_username
 numdata:
-- count: 392
+- count: 354
+  ip: 172.26.0.1
+- count: 257
+  ip: 172.24.0.1
+- count: 389
   ip: 172.20.0.1
+- count: 0
+  ip: 172.25.0.1
 table: user
-total: 392
+total: 1000
