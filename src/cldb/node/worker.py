@@ -21,6 +21,7 @@ import time
 import shutil
 from enum import Enum
 from .err import *
+import traceback
 
 class NodeMode(Enum):
 	ADD			= "add"			# New node add cluster
@@ -152,6 +153,7 @@ class MySQLWorker(NodeWorker):
 				self._exists_topology = copy.deepcopy(self._exists_iphashs)
 		except FileNotFoundError as e:
 			raise FileNotFoundError(f"not found cluster yaml file.({self._yaml_path})")
+		print(self._exists_iphashs)
 
 		# check YAML format
 		if not isinstance(self._exists_iphashs,list):
@@ -287,7 +289,10 @@ class MySQLWorker(NodeWorker):
 		total_transaction.append(info)
 	
 	def _trans_organize(self,total_transaction):
-		return [ x for x in total_transaction if x["steal_ip"] != x["insert_ip"] ]
+		if self._require_reshard:
+			return total_transaction
+		else:
+			return [ x for x in total_transaction if x["steal_ip"] != x["insert_ip"] ]
 
 	def _consistency(self,total_transaction):
 		if not isinstance(total_transaction,list):
@@ -624,16 +629,16 @@ class MySQLWorker(NodeWorker):
 	):
 		ips = set()
 		ips.add(trans["steal_ip"])
-		if self._require_reshard:
+		if self._require_reshard or self._total_ip_list is not None:
 			for node in self._new_iphashs:
 				ips.add(node["ip"])
-
+			for node in self._total_ip_list if self._total_ip_list is not None else set():
+				ips.add(node["ip"])
 		trans["steal_data"] = list()
 		trans["steal_fake"] = dict()
 		for ip in ips:
 			query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
 			sql = f"SELECT * FROM {self._table} WHERE {query}"
-			print(sql)
 			# Steal Next Host
 			try:
 				self._conn = pymysql.connect(
@@ -711,6 +716,10 @@ class MySQLWorker(NodeWorker):
 		self._steal_ip_count = dict()
 		for ip in self.steal_ip:
 			self._steal_ip_count[ip] = 0
+		if self._total_ip_list is not None:
+			for node in self._total_ip_list:
+				if len([ x for x in self._steal_ip if x == node["ip"]]) == 0:
+					self._steal_ip_count[node["ip"]] = 0
 		self._get_allnode_data_count()
 	# Insert New Data
 	def insert_data(
@@ -788,7 +797,12 @@ class MySQLWorker(NodeWorker):
 		return total_len
 
 	def _get_allnode_data_count(self):
-		for node in self._mode_iphashs:
+		get_allnode = copy.deepcopy(self._mode_iphashs)
+		if self._total_ip_list is not None:
+			for node in self._total_ip_list:
+				if len([ x for x in get_allnode if x["ip"] == node["ip"]]) == 0:
+					get_allnode.append(node)
+		for node in get_allnode:
 			ip = node["ip"]
 			port = node["port"]
 			try:
@@ -911,7 +925,7 @@ class MySQLWorker(NodeWorker):
 		
 		self._init_contest_data()
 		after_totalcount = copy.deepcopy(self._total_data_count)
-		
+
 		for trans in self._total_transaction:
 			try:
 				steal_len = self.steal_data(trans)
@@ -939,10 +953,15 @@ class MySQLWorker(NodeWorker):
 				self._error_selection(trans)
 
 		print("Before :")
-		for node in self._mode_iphashs:
+		allnodes = copy.deepcopy(self._mode_iphashs)
+		if self._total_ip_list is not None:
+			for node in self._total_ip_list:
+				if len([x for x in allnodes if x["ip"] == node["ip"]]) == 0:
+					allnodes.append(node)
+		for node in allnodes:
 			print(f'\t{node["ip"]} => {self._total_data_count[node["ip"]]}')
 		print("After :")
-		for node in self._mode_iphashs:
+		for node in allnodes:
 			print(f'\t{node["ip"]} => {after_totalcount[node["ip"]]}')
 
 		beforetotal = 0
@@ -964,6 +983,7 @@ class MySQLWorker(NodeWorker):
 		new_iphashs = copy.deepcopy(self._new_iphashs)
 		vnode_hash = dict()
 		vnode_iphashs = list()
+		vnode_ips = list()
 		for node in new_iphashs:
 			vnode_hash[node["ip"]] = list()
 			for vnode in self._virtual_iphashs:
@@ -975,13 +995,23 @@ class MySQLWorker(NodeWorker):
 			vnode["ip"] = node["ip"]
 			vnode["hash"] = vnode_hash[node["ip"]]
 			vnode["port"] = self._ipport[node["ip"]]
+
+			cluster_total_ip = {
+				"ip":vnode["ip"],
+				"port":vnode["port"],
+				"user":self._ipuser[node["ip"]],
+				"password":self._ippass[node["ip"]],
+			}
+			if cluster_total_ip not in vnode_ips:
+				vnode_ips.append(cluster_total_ip)
 			if not self._secret:
 				vnode["user"] = self._ipuser[node["ip"]]
 				vnode["password"] = self._ippass[node["ip"]]
 			vnode_iphashs.append(vnode)
-		return vnode_iphashs
+		return vnode_iphashs,vnode_ips
 
-	def work(self):
+	# total_ip_list => list of containing all operations ip
+	def work(self,total_ip_list):
 		print("exists")
 		for obj in self._exists_haship:
 			print(f'{obj["ip"]}: {obj["hash"]}')
@@ -989,6 +1019,15 @@ class MySQLWorker(NodeWorker):
 		for obj in self._virtual_haship:
 			print(f'{obj["ip"]}: {obj["hash"]}')
 		self._total_transaction = self._diff_cluster()
+		self._total_ip_list = total_ip_list
+
+		for node in self._total_ip_list:
+			if node["ip"] not in self._ipport.keys():
+				self._ipport[node["ip"]] = node["port"]
+			if node["user"] not in self._ipuser.keys():
+				self._ipuser[node["ip"]] = node["user"]
+			if node["password"] not in self._ippass.keys():
+				self._ippass[node["ip"]] = node["password"]
 
 		self.sid()
 

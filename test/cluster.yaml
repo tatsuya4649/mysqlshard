@@ -1,5 +1,21 @@
 cluster:
-- ip: 172.25.0.1
-  hash:
-  -
-  port: 13306
+- hash:
+  - 22f1db4f0f9bf2e70b7cdd7f0d75fa53
+  - 3e9cd67e4d9b58799627409cea6058ee
+  - 5d24aa4a65f934fb96f41dfaa542b27b
+  - 723ee8e952c6c25ff6277a2f95c77a08
+  - c4450a781f8dd663bd453eacbff34fd4
+  ip: 172.26.0.1
+  password: mysql
+  port: 43306
+  user: root
+- hash:
+  - 2cc9940c038b703b80bb9dccc2f547f5
+  - 58210d7aa05e2a468725bb45e4bf95eb
+  - a799bfa76e49bb0e43190454ff941710
+  - e6f96837593a72be5043e26a5550098f
+  - fd44fda7592a372348bab8a959f9aeb1
+  ip: 172.24.0.1
+  password: mysql
+  port: 33306
+  user: root

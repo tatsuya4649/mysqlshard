@@ -30,6 +30,7 @@ class Cluster:
 		self._cluster_update = cluster_info["cluster_update"]
 		self._create_data_counter = parse_bool(cluster_info["create_counter_yaml"] if "create_counter_yaml" in cluster_info.keys() else False)
 		self._create_data_path = cluster_info["create_data_path"] if "create_data_path" in cluster_info.keys() else self._CLUSTER_DATA_PATH
+		self._total_ip_list = list()
 	# check have a operation lists
 	def _require_operation_lists(func):
 		def _check(self,*args,**kwargs):
@@ -48,7 +49,7 @@ class Cluster:
 				raise ClusterAttributeError("must have _worker")
 			if len([x for x in inspect.getmro(self._worker) if x is NodeWorker]) == 0:
 				raise ClusterTypeError("worker must be NodeWorker type.")
-			func(self,*args,**kwargs)
+			return func(self,*args,**kwargs)
 		return _check
 	@_require_worker
 	def _work(self,operate):
@@ -57,12 +58,13 @@ class Cluster:
 		params = self._operate()
 		work_ins = self._worker(self._cluster_info,params)
 		# get number of data by node
-		total_node_counter = work_ins.work()
+		total_node_counter = work_ins.work(self._total_ip_list)
 		if self._create_data_counter:
 			with open(self._create_data_path,"w") as yf:
 				yaml.dump(total_node_counter,yf,default_flow_style=False)
 
 		self._operate = None
+		sys.exit(1)
 	
 	@_require_worker
 	def _only_update_cluster(self,operate):
@@ -70,10 +72,14 @@ class Cluster:
 
 		params = self._operate()
 		work_ins = self._worker(self._cluster_info,params)
-		update_cluster = work_ins.update_cluster()
+		update_cluster,ip_list = work_ins.update_cluster()
+		for node in ip_list:
+			if len(self._total_ip_list) == 0 or len([ x for x in self._total_ip_list if x["ip"] == node["ip"]]) == 0:
+				self._total_ip_list.append(node)
 		if self._cluster_update:
 			update_cluster_yaml(self._cluster_yaml,update_cluster)
 		self._operate = None
+		return update_cluster
 
 	# required: 
 	#   * _operation_lists: this is cluster operation dict lists
@@ -82,11 +88,12 @@ class Cluster:
 		ops_yaml = copy.deepcopy(self._cluster_info)
 		now_operations = copy.deepcopy(self._operation_lists)
 		ops_yaml["ops"] = [ i() for i in now_operations ]
+
 		for operate in self._operation_lists:
 			index = self._operation_lists.index(operate)
 			# moving data only last
-			if len(self._operation_lists) > 1 and self._operation_lists[index+1] != self._operation_lists[-1]:
-				self._only_update_cluster(operate)
+			if len(self._operation_lists) > 1 and self._operation_lists[index] != self._operation_lists[-1]:
+				update_cluster = self._only_update_cluster(operate)
 			else:
 				self._work(operate)
 
@@ -119,7 +126,7 @@ class MySQLCluster(Cluster):
 		ops_path,
 	):
 		operations = self._operations_check(operations)
-		if len(operations) != 0:
+		if len(operations) > 1:
 			operations[-1].option["require_reshard"] = True
 		super().__init__(cluster_info,ops_path)
 		self._operation_lists = operations
