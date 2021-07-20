@@ -90,6 +90,45 @@ class NodeWorker:
 			raise NodeWorkerTypeError("Port number mast be integer.")
 		if not isinstance(self._mode,NodeMode):
 			raise NodeWorkerTypeError("mode must be NodeMode(Enum)")
+	def _get_exists_cluster(self):
+		try:
+			self._exists_iphashs = self._parse_yaml(self._yaml_path)
+			if self._mode == NodeMode.DELETE:
+				self._exists_topology = copy.deepcopy(self._exists_iphashs)
+		except FileNotFoundError as e:
+			raise FileNotFoundError(f"not found cluster yaml file.({self._yaml_path})")
+	def _parse_yaml(self,path):
+		return parse.parse_yaml(path)
+	@property
+	def exists_iphashs(self):
+		return self._exists_iphashs
+	def _get_exists_haship(self):
+		exists_haship = list()
+		for obj in self.exists_iphashs:
+			for hash in obj["hash"]:
+				exists_haship.append({
+					"hash": hash,
+					"ip": obj["ip"]
+				})
+		self._exists_haship = sorted(exists_haship,key=lambda x:x["hash"])
+	def _add_fl(self,haship):
+		if len(haship) == 0:
+			return haship
+		
+		firstip = haship[0]["ip"]
+		lastip = haship[-1]["ip"]
+		if haship[0]["hash"] != "0"*self._MD5_STR_LEN:
+			haship.append({
+					"hash": "0"*self._MD5_STR_LEN,
+					"ip": firstip,
+			})
+		if haship[-1]["hash"] != "f"*self._MD5_STR_LEN:
+			haship.append({
+					"hash": "f"*self._MD5_STR_LEN,
+					"ip": lastip,
+			})
+		haship = sorted(haship,key=lambda x:x["hash"])
+		return haship
 
 
 class MySQLWorker(NodeWorker):
@@ -147,14 +186,8 @@ class MySQLWorker(NodeWorker):
 		self._require_reshard = parse_bool(option["require_reshard"]) if option is not None and  "require_reshard" in option.keys() else self._REQUIRE_RESHARD_DEFAULT
 		self._non_check = parse_bool(option["non_check"]) if option is not None and "non_check" in option.keys() else self._NON_CHECK_DEFAULT
 
-		try:
-			self._exists_iphashs = self._parse_yaml(self._yaml_path)
-			if self._mode == NodeMode.DELETE:
-				self._exists_topology = copy.deepcopy(self._exists_iphashs)
-		except FileNotFoundError as e:
-			raise FileNotFoundError(f"not found cluster yaml file.({self._yaml_path})")
-		print(self._exists_iphashs)
-
+		self._get_exists_cluster()
+		self._get_exists_haship()
 		# check YAML format
 		if not isinstance(self._exists_iphashs,list):
 			raise TypeError("this YAML File is invalid in this program.")
@@ -279,7 +312,6 @@ class MySQLWorker(NodeWorker):
 		self._virtual_node(self._virtual_nodecount)
 #		self._total_transaction = self._real_steal_query()
 		self._virtual_haship = self._add_fl(self._virtual_haship)
-		self._exists_haship = self._get_exists_haship()
 		self._exists_haship = self._add_fl(self._exists_haship)
 		
 #		self._total_transaction = self._diff_cluster()
@@ -369,18 +401,7 @@ class MySQLWorker(NodeWorker):
 #		for trans in total_transaction:
 #			print(trans)
 		return self._trans_organize(total_transaction)
-					
 
-	def _get_exists_haship(self):	
-		exists_haship = list()
-		for obj in self.exists_iphashs:
-			for hash in obj["hash"]:
-				exists_haship.append({
-					"hash": hash,
-					"ip": obj["ip"]
-				})
-		exists_haship = sorted(exists_haship,key=lambda x:x["hash"])
-		return exists_haship
 	@property
 	def _mode_iphashs(self):
 		if self._mode is NodeMode.ADD:
@@ -437,12 +458,6 @@ class MySQLWorker(NodeWorker):
 				if iphash["ip"] == node["ip"]:
 					for key in node.keys():
 						iphash[key] = node[key]
-	@property
-	def exists_iphashs(self):
-		return self._exists_iphashs
-
-	def _parse_yaml(self,path):
-		return parse.parse_yaml(path)
 	
 	def _virtual_node_hash(self,ip,total):
 		virtual_ip = f'{ip}{total}'
@@ -480,21 +495,6 @@ class MySQLWorker(NodeWorker):
 			raise ValueError("must have _virtual_iphashs. hints: call _virtual_node function.")
 		for obj in self._virtual_iphashs:
 			obj["hash"].sort()
-	def _add_fl(self,haship):
-		firstip = haship[0]["ip"]
-		lastip = haship[-1]["ip"]
-		if haship[0]["hash"] != "0"*self._MD5_STR_LEN:
-			haship.append({
-					"hash": "0"*self._MD5_STR_LEN,
-					"ip": firstip,
-			})
-		if haship[-1]["hash"] != "f"*self._MD5_STR_LEN:
-			haship.append({
-					"hash": "f"*self._MD5_STR_LEN,
-					"ip": lastip,
-			})
-		haship = sorted(haship,key=lambda x:x["hash"])
-		return haship
 	@property
 	def target_ip(self):
 		return self._target_node_dict["ip"]
@@ -629,7 +629,7 @@ class MySQLWorker(NodeWorker):
 	):
 		ips = set()
 		ips.add(trans["steal_ip"])
-		if self._require_reshard or self._total_ip_list is not None:
+		if self._require_reshard or (hasattr(self,"_total_ip_list") and self._total_ip_list is not None):
 			for node in self._new_iphashs:
 				ips.add(node["ip"])
 			for node in self._total_ip_list if self._total_ip_list is not None else set():
@@ -716,7 +716,7 @@ class MySQLWorker(NodeWorker):
 		self._steal_ip_count = dict()
 		for ip in self.steal_ip:
 			self._steal_ip_count[ip] = 0
-		if self._total_ip_list is not None:
+		if hasattr(self,"_total_ip_list") and self._total_ip_list is not None:
 			for node in self._total_ip_list:
 				if len([ x for x in self._steal_ip if x == node["ip"]]) == 0:
 					self._steal_ip_count[node["ip"]] = 0
@@ -798,7 +798,7 @@ class MySQLWorker(NodeWorker):
 
 	def _get_allnode_data_count(self):
 		get_allnode = copy.deepcopy(self._mode_iphashs)
-		if self._total_ip_list is not None:
+		if hasattr(self,"_total_ip_list") and self._total_ip_list is not None:
 			for node in self._total_ip_list:
 				if len([ x for x in get_allnode if x["ip"] == node["ip"]]) == 0:
 					get_allnode.append(node)
@@ -954,7 +954,7 @@ class MySQLWorker(NodeWorker):
 
 		print("Before :")
 		allnodes = copy.deepcopy(self._mode_iphashs)
-		if self._total_ip_list is not None:
+		if hasattr(self,"_total_ip_list") and self._total_ip_list is not None:
 			for node in self._total_ip_list:
 				if len([x for x in allnodes if x["ip"] == node["ip"]]) == 0:
 					allnodes.append(node)
@@ -1009,15 +1009,36 @@ class MySQLWorker(NodeWorker):
 				vnode["password"] = self._ippass[node["ip"]]
 			vnode_iphashs.append(vnode)
 		return vnode_iphashs,vnode_ips
+	
+	def _empty_work(self):
+		self._get_allnode_data_count()
+		numdata_by_node = dict()
+		numdata_by_node["numdata"] = list()
+		total = 0
+		for ip in self._total_data_count:
+			numdata_by_node["numdata"].append({
+				"ip": ip,
+				"count": self._total_data_count[ip],
+			})
+			total += self._total_data_count[ip]
+		numdata_by_node["total"] = total
+		numdata_by_node["database"] = self._database
+		numdata_by_node["table"] = self._table
+		numdata_by_node["hash_column"] = self._hash_column
+		return numdata_by_node
+
 
 	# total_ip_list => list of containing all operations ip
 	def work(self,total_ip_list):
-		print("exists")
-		for obj in self._exists_haship:
-			print(f'{obj["ip"]}: {obj["hash"]}')
-		print("new")
-		for obj in self._virtual_haship:
-			print(f'{obj["ip"]}: {obj["hash"]}')
+#		print("exists")
+#		for obj in self._exists_haship:
+#			print(f'{obj["ip"]}: {obj["hash"]}')
+#		print("new")
+#		for obj in self._virtual_haship:
+#			print(f'{obj["ip"]}: {obj["hash"]}')
+		if len(self._exists_iphashs)==0 or len(self._exists_haship)==0:
+			return self._empty_work()
+			
 		self._total_transaction = self._diff_cluster()
 		self._total_ip_list = total_ip_list
 

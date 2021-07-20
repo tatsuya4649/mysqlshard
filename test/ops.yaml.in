@@ -15,38 +15,3 @@ ops:
   update: True
   ping_interval: 0
   non_check: False
-#include "../node/NODE3OPS"
-  mode: add
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE4OPS"
-  mode: add
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE2OPS"
-  mode: delete
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE1OPS"
-  mode: delete
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE2OPS"
-  mode: add
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
