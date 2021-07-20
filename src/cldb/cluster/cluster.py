@@ -58,11 +58,14 @@ class Cluster:
 		params = self._operate()
 		work_ins = self._worker(self._cluster_info,params)
 		# get number of data by node
-		total_node_counter = work_ins.work(self._total_ip_list)
+		total_node_counter,update_yaml = work_ins.work(self._total_ip_list)
 		if self._create_data_counter:
 			with open(self._create_data_path,"w") as yf:
 				yaml.dump(total_node_counter,yf,default_flow_style=False)
 
+		update_cluster = update_yaml[0]
+		if self._cluster_update:
+			update_cluster_yaml(self._cluster_yaml,update_cluster)
 		self._operate = None
 		sys.exit(1)
 	

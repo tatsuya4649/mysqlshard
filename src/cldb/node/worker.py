@@ -1012,6 +1012,35 @@ class MySQLWorker(NodeWorker):
 	
 	def _empty_work(self):
 		self._get_allnode_data_count()
+
+		after_totalcount = copy.deepcopy(self._total_data_count)
+		print("Before :")
+		allnodes = copy.deepcopy(self._mode_iphashs)
+		if hasattr(self,"_total_ip_list") and self._total_ip_list is not None:
+			for node in self._total_ip_list:
+				if len([x for x in allnodes if x["ip"] == node["ip"]]) == 0:
+					allnodes.append(node)
+		for node in allnodes:
+			print(f'\t{node["ip"]} => {self._total_data_count[node["ip"]]}')
+		print("After :")
+		for node in allnodes:
+			print(f'\t{node["ip"]} => {after_totalcount[node["ip"]]}')
+
+		beforetotal = 0
+		aftertotal = 0
+		for countip in self._total_data_count.keys():
+			beforetotal += self._total_data_count[countip]
+		for countip in after_totalcount.keys():
+			aftertotal += after_totalcount[countip]
+
+		if beforetotal != aftertotal:
+			raise test.ConsistencyUnmatchError("Unmatch total before and after data count.")
+		else:
+			print(f'\rTotal Data Count: {aftertotal}')
+		# Notification script for increment node
+		if self._notice is not None:
+			self._notice(*self._notice_args,**self._notice_kwargs)
+
 		numdata_by_node = dict()
 		numdata_by_node["numdata"] = list()
 		total = 0
@@ -1037,7 +1066,7 @@ class MySQLWorker(NodeWorker):
 #		for obj in self._virtual_haship:
 #			print(f'{obj["ip"]}: {obj["hash"]}')
 		if len(self._exists_iphashs)==0 or len(self._exists_haship)==0:
-			return self._empty_work()
+			return self._empty_work(),self._update_yaml()
 			
 		self._total_transaction = self._diff_cluster()
 		self._total_ip_list = total_ip_list
@@ -1065,7 +1094,7 @@ class MySQLWorker(NodeWorker):
 		numdata_by_node["database"] = self._database
 		numdata_by_node["table"] = self._table
 		numdata_by_node["hash_column"] = self._hash_column
-		return numdata_by_node
+		return numdata_by_node,self._update_yaml()
 
 	def update_cluster(self):
 		return self._update_yaml()
