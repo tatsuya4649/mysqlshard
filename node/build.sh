@@ -7,9 +7,13 @@ docker network rm $NODE
 docker network create $NODE
 IP=$(docker network inspect $NODE | jq -r ".[].IPAM.Config[].Gateway")
 HASH=$(./hash.sh)
-#IPHASH="- ip: $IP\n  hash: $HASH\n  port: $PORT\n  user: $USER\n  password: $PASSWORD"
-IPHASH="- ip: $IP\n  hash:\n  - $HASH\n  port: $PORT\n"
+IPYAML="- ip: $IP\n"
+PORTYAML="  port: $PORT\n"
+HASHYAML="  hash:\n  - $HASH\n"
+IPHASH="$IPYAML$HASHYAML$PORTYAML"
 echo -e "$IPHASH" > ${NODE^^}IP
+echo -en "$IPYAML" > ${NODE^^}OPS
+echo -en "$PORTYAML" >> ${NODE^^}OPS
 cd ..
 docker build -t $NODE -f ./node/Dockerfile .
 cd node

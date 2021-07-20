@@ -7,8 +7,9 @@ virtual_nodecount: 100
 user: root
 password: mysql
 ops:
-- ip: 172.20.0.1
-  port: 23306
+/*- ip: 172.25.0.1 */
+/*  port: 23306 */
+#include "../node/NODE2OPS"
   mode: add
   secret: False
   secret_once: True

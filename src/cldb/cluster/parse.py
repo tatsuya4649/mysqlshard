@@ -7,6 +7,16 @@ from .type import OperationType
 _VIRTUAL_NODECOUNT_DEFAULT=100
 _CLUSTER_UPDATE_DEFAULT=True
 
+_REQUIRE_CLUSTER_INFO_KEY = [
+	"type",
+	"database",
+	"table",
+	"hash_column",
+	"cluster_yaml",
+	"virtual_nodecount",
+	"ops",
+]
+
 def yaml_to_ops(path):
 	"""
 	yaml_to_ops function is YAML => NodeOperations List.
@@ -28,7 +38,6 @@ def yaml_to_ops(path):
 	  port: 3306
 	  mode: add
 	"""
-	print(path)
 	with open(path,"r") as f:
 		obj = yaml.safe_load(f)
 	if obj is None:
@@ -67,6 +76,7 @@ def yaml_to_ops(path):
 	if len(lists) == 0:
 		raise ClusterOperationError("no operation.")
 	cluster_info = {
+		"type": obj["type"],
 		"database": obj["database"],
 		"table": obj["table"],
 		"hash_column": obj["hash_column"],
@@ -74,6 +84,8 @@ def yaml_to_ops(path):
 		"virtual_nodecount": obj["virtual_nodecount"] if "virtual_nodecount" in obj.keys() else _VIRTUAL_NODECOUNT_DEFAULT,
 		"cluster_update": obj["cluster_update"] if "cluster_update" in obj.keys() else _CLUSTER_UPDATE_DEFAULT
 	}
+	for optional_key in [key for key in obj.keys() if key not in _REQUIRE_CLUSTER_INFO_KEY]:
+			cluster_info[optional_key] = obj[optional_key]
 	return cluster_info,lists
 
 

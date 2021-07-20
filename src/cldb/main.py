@@ -10,12 +10,12 @@ def _type(ope):
 	else:
 		print(f"Operation type is invalid.",file=sys.stderr)
 
-def _call_cluster(cluster_info,ops):
+def _call_cluster(cluster_info,ops,ops_yaml):
 	if len(ops) == 0:
 		print(f"Operation must be one or more",file=sys.stderr)
 	first_ope = ops[0]
 	cluster_type = _type(first_ope)
-	cluster = cluster_type(cluster_info,ops)
+	cluster = cluster_type(cluster_info,ops,ops_yaml)
 	cluster.operate()
 
 def with_ops_yaml(ops_yaml):
@@ -26,7 +26,7 @@ def with_ops_yaml(ops_yaml):
 		print(f"Operations File(\"{ops_yaml}\") not YAML File.(Hints: should verify extensions)",file=sys.stderr)
 		sys.exit(1)
 	cluster_info,ops = yaml_to_ops(ops_yaml)
-	_call_cluster(cluster_info,ops)
+	_call_cluster(cluster_info,ops,ops_yaml)
 def without_ops_yaml(parser,args):
 	if args.ip is None:
 		parser.print_help()
@@ -79,7 +79,7 @@ def without_ops_yaml(parser,args):
 		print("\nThere is no virtual node count.",file=sys.stderr)
 		sys.exit()
 	cluster_info["virtual_nodecount"] = args.virtual_nodecount
-	_call_cluster(cluster_info,[operate])
+	_call_cluster(cluster_info,[operate],None)
 
 def main():
 	parser = argparse.ArgumentParser(description="Sharding Database")

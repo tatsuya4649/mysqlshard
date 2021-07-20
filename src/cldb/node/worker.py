@@ -102,7 +102,6 @@ class MySQLWorker(NodeWorker):
 		- notice_kwargs
 		- secret
 		- secret_once
-		- virtual_nodecount
 		- require_reshard
 		- user
 		- password
@@ -118,9 +117,11 @@ class MySQLWorker(NodeWorker):
 	_NOTICE_KWARGS_DEFAULT={}
 	_SECRET_DEFAULT=False
 	_SECRET_ONCE_DEFAULT=False
-#	_UPDATE_DEFAULT=True
 	_USER_DEFAULT=None
 	_PASSWORD_DEFAULT=None
+	_NON_CHECK_DEFAULT=False
+	_CREATE_COUNTER_YAML=False
+	_MD5_STR_LEN=32
 	def __init__(
 		self,
 		cluster_info,
@@ -141,10 +142,9 @@ class MySQLWorker(NodeWorker):
 
 		self._secret = parse_bool(option["secret"]) if option is not None and "secret" in option.keys() else self._SECRET_DEFAULT
 		self._secret_once = parse_bool(option["secret_once"]) if option is not None and  "secret_once" in option.keys() else self._SECRET_ONCE_DEFAULT
-#		self._update = parse_bool(option["update"]) if option is not None and "update" in option.keys() else self._UPDATE_DEFAULT
-
 		# If require resharding, steal data from all real node
 		self._require_reshard = parse_bool(option["require_reshard"]) if option is not None and  "require_reshard" in option.keys() else self._REQUIRE_RESHARD_DEFAULT
+		self._non_check = parse_bool(option["non_check"]) if option is not None and "non_check" in option.keys() else self._NON_CHECK_DEFAULT
 
 		try:
 			self._exists_iphashs = self._parse_yaml(self._yaml_path)
@@ -182,11 +182,14 @@ class MySQLWorker(NodeWorker):
 		if self._mode is NodeMode.ADD:
 			self._target_node_dict["hash"] = [target_node_hash]
 
-		user = option["user"] if option is not None and "user" in option.keys() else self._USER_DEFAULT
-		password = option["password"] if option is not None and "password" in option.keys() else self._PASSWORD_DEFAULT
+		# cluster default user/password
+		user = cluster_info["user"] if "user" in cluster_info.keys() else self._USER_DEFAULT
+		password = cluster_info["password"] if "password" in cluster_info.keys() else self._PASSWORD_DEFAULT
+		# specific user/password
+		user = option["user"] if option is not None and "user" in option.keys() else user
+		password = option["password"] if option is not None and "password" in option.keys() else password
 		if (self._mode is NodeMode.ADD and (user is None or password is None or self._secret)) or \
-			(self._mode is NodeMode.DELETE and ((len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x["password"] is not None]) == 0) or \
-				(len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and x["user"] is not None and x ["password"] is not None]) == 0))):
+			(self._mode is NodeMode.DELETE and ((user is None or password is None or self._secret) and ((len([x for x in self._exists_iphashs if x["ip"] == target_node_ip and ("user" in x.keys() and "password" in x.keys()) and (x["user"] is not None and x["password"] is not None)]) == 0)))):
 			res = userpass.secret_userpass(target_node_ip,self._port,self._database,"\033[31mPlease input add node database user and database password.\033[0m")
 			user = res["user"]
 			password = res["password"]
@@ -272,8 +275,107 @@ class MySQLWorker(NodeWorker):
 		self._deplica_insert = dict()
 
 		self._virtual_node(self._virtual_nodecount)
-		self._total_transaction = self._real_steal_query()
+#		self._total_transaction = self._real_steal_query()
+		self._virtual_haship = self._add_fl(self._virtual_haship)
+		self._exists_haship = self._get_exists_haship()
+		self._exists_haship = self._add_fl(self._exists_haship)
 		
+#		self._total_transaction = self._diff_cluster()
+		self._total_transaction = None
+
+	def _trans(self,total_transaction,info):
+		total_transaction.append(info)
+	
+	def _trans_organize(self,total_transaction):
+		return [ x for x in total_transaction if x["steal_ip"] != x["insert_ip"] ]
+
+	def _consistency(self,total_transaction):
+		if not isinstance(total_transaction,list):
+			raise TypeError("total_transaction must be list.")
+		if len(total_transaction) == 0:
+			raise ValueError("total_transaction must be length one or more.")
+		if len(total_transaction) == 1:
+			if not total_transaction[-1]["minhash"] != "0"*self._MD5_STR_LEN:
+				raise test.ConsistencyError(f"must be \"0\"*{self._MD5_STR_LEN} in first transaction minhash")
+		else:
+			# greater than one
+			if not total_transaction[-1]["minhash"] != total_transaction[-2]["maxhash"]:
+				raise test.ConsistencyError("occurs inconsystency")
+
+	def _diff_cluster(self):
+		vhaship = self._virtual_haship
+		ehaship = self._exists_haship
+
+		total_transaction = list()
+		for obj in sorted(vhaship,reverse=True,key=lambda x:x["hash"]):
+#			print("========================")
+			steal_max_hash = obj
+			if vhaship.index(obj) > 0:
+				hash = obj["hash"]
+				nhash = vhaship[vhaship.index(obj)-1]["hash"]
+				gapex = sorted([x["hash"] for x in ehaship if x["hash"]<=hash and x["hash"]>nhash ],reverse=True)
+				if len(gapex) != 0:
+					for gap in gapex:
+						max = sorted([y for y in ehaship if y["hash"] >= gap],key=lambda x:x["hash"])[0]
+						steal_ip = max["ip"]
+#						print(f'{steal_ip}:{max["hash"]}~{steal_max_hash} => {obj["ip"]}')
+						self._trans(total_transaction,{
+							"minhash":max["hash"],"maxhash":steal_max_hash["hash"],
+							"minex": "<","maxex": ">=",
+							"steal_ip":steal_ip,"insert_ip":obj["ip"],
+							"logical": Logical.AND
+						})
+						steal_max_hash = max
+#					print(f'{steal_ip}:{nhash}~{steal_max_hash} => {obj["ip"]}')
+					self._trans(total_transaction,{
+						"minhash":nhash,"maxhash":steal_max_hash["hash"],
+						"minex": "<","maxex": ">",
+						"steal_ip":steal_max_hash["ip"],"insert_ip":obj["ip"],
+						"logical": Logical.AND
+					})
+				else:
+					max = sorted([y for y in ehaship if y["hash"] >= hash],key=lambda x:x["hash"])[0]
+#					print(f'{max["ip"]}:{nhash}~{hash} => {obj["ip"]}')
+					self._trans(total_transaction,{
+						"minhash":nhash,"maxhash":hash,
+						"minex": "<","maxex": ">=",
+						"steal_ip":max["ip"],"insert_ip":obj["ip"],
+						"logical": Logical.AND
+					})
+			else:
+				hash = obj["hash"]
+				first_ehaships = [x for x in ehaship if x["hash"]<=hash]
+				for ehi in sorted(first_ehaships,reverse=True,key=lambda x:x["hash"]):
+					ehash = ehi["hash"]
+					eip = sorted([y for y in ehaship if y["hash"] >= ehash],key=lambda x:x["hash"])[0]
+					if ehash <= hash:
+	#					print(f'{ehaship[0]["ip"]}:{ehash}~{hash} => {obj["ip"]}')
+						self._trans(total_transaction,{
+							"minhash":ehash,"maxhash":steal_max_hash["hash"],
+							"minex": "<","maxex": ">=",
+							"steal_ip":eip["ip"],"insert_ip":obj["ip"],
+							"logical": Logical.AND
+						})
+						steal_max_hash = ehi
+			self._consistency(total_transaction)
+		
+#		print("========================")
+#		print("new")
+#		for trans in total_transaction:
+#			print(trans)
+		return self._trans_organize(total_transaction)
+					
+
+	def _get_exists_haship(self):	
+		exists_haship = list()
+		for obj in self.exists_iphashs:
+			for hash in obj["hash"]:
+				exists_haship.append({
+					"hash": hash,
+					"ip": obj["ip"]
+				})
+		exists_haship = sorted(exists_haship,key=lambda x:x["hash"])
+		return exists_haship
 	@property
 	def _mode_iphashs(self):
 		if self._mode is NodeMode.ADD:
@@ -297,8 +399,8 @@ class MySQLWorker(NodeWorker):
 			for node in self._virtual_haship:
 				_haship.append(
 					{
-						"ip": node[1],
-						"hash": node[0]
+						"ip": node["ip"],
+						"hash": node["hash"]
 					}
 				)
 			_haship = sorted(_haship,key=lambda x:x["hash"])
@@ -362,7 +464,6 @@ class MySQLWorker(NodeWorker):
 					"ip": obj["ip"]
 				})
 				obj["hash"].append(virtual_hash)
-				print(f'{obj["ip"]}: {virtual_hash}')
 				total += 1
 		# This is the node info that is distination of moving data
 		self._virtual_haship = sorted(virtual_haship,key=lambda x:x["hash"])
@@ -374,6 +475,21 @@ class MySQLWorker(NodeWorker):
 			raise ValueError("must have _virtual_iphashs. hints: call _virtual_node function.")
 		for obj in self._virtual_iphashs:
 			obj["hash"].sort()
+	def _add_fl(self,haship):
+		firstip = haship[0]["ip"]
+		lastip = haship[-1]["ip"]
+		if haship[0]["hash"] != "0"*self._MD5_STR_LEN:
+			haship.append({
+					"hash": "0"*self._MD5_STR_LEN,
+					"ip": firstip,
+			})
+		if haship[-1]["hash"] != "f"*self._MD5_STR_LEN:
+			haship.append({
+					"hash": "f"*self._MD5_STR_LEN,
+					"ip": lastip,
+			})
+		haship = sorted(haship,key=lambda x:x["hash"])
+		return haship
 	@property
 	def target_ip(self):
 		return self._target_node_dict["ip"]
@@ -418,17 +534,12 @@ class MySQLWorker(NodeWorker):
 		total_transaction = list()
 		pre_trans = dict()
 
-#		for haship in having_haship:
-#			print(haship)
-#		for iphash in self._virtual_iphashs:
-#			print(iphash)
 		# loog node that after moving.
 		for i in range(target_len):
 			# target node Hash and IP in after moving
 			haship = self._mode_target_haship[i]
 			matchindex = self._have_real_node(haship["hash"],having_haship)
 			for index in matchindex:
-#				print("'''''''''''''")
 				matchih = self._mode_having_haship[index]
 				trans = dict()
 				if self._mode is NodeMode.DELETE:
@@ -466,23 +577,12 @@ class MySQLWorker(NodeWorker):
 							lasthash = prevhaving \
 								if prevhaving["hash"] < lasthash["hash"] else lasthash
 				if i == 0:
-#							if self._mode_having_haship[-1]["hash"] >= self._mode_target_haship[-1][HASH_INDEX] \
-#								else self._mode_target_haship[-1]["hash"]
 					maxhash = matchih if matchih["hash"] < haship["hash"] else haship
 					trans["minhash"] = self._mode_target_haship[-1]["hash"] if self._mode is NodeMode.ADD else lasthash["hash"]
 					trans["maxhash"] = haship["hash"] if self._mode is NodeMode.ADD else maxhash["hash"]
 					trans["logical"] = Logical.OR
 
 				else:
-#					if self._mode is NodeMode.DELETE:
-#						prevhash = self._mode_target_haship[i-1][HASH_INDEX]
-#						previndex = matchindex.index(index) - 1 if matchindex.index(index) > 0 \
-#							else -1
-#						prevmatchindex = matchindex[previndex]
-#						print(prevmatchindex)
-#						lasthash = prevhash if (index == 0 or len(matchindex) == 1 or previndex < 0) \
-#							else self._mode_having_haship[prevmatchindex]["hash"] if self._mode_having_haship[prevmatchindex]["hash"] >= prevhash \
-#								else prevhash
 					maxhash = matchih if matchih["hash"] < haship["hash"] else haship
 					trans["minhash"] = pre_trans["maxhash"] if self._mode is NodeMode.ADD else lasthash["hash"]
 					trans["maxhash"] = haship["hash"] if self._mode is NodeMode.ADD else maxhash["hash"]
@@ -491,10 +591,6 @@ class MySQLWorker(NodeWorker):
 					continue
 				trans["steal_ip"] = matchih["ip"] if self._mode is NodeMode.ADD else self._next_having(trans["maxhash"],having_haship)
 				trans["insert_ip"] = haship["ip"] if self._mode is NodeMode.ADD else haship["ip"]
-#				print(trans["minhash"])
-#				print(trans["maxhash"])
-#				print(trans["steal_ip"])
-#				print(trans["insert_ip"])
 				if trans["steal_ip"] != trans["insert_ip"]:
 					total_transaction.append(trans)
 				pre_trans = trans
@@ -505,7 +601,6 @@ class MySQLWorker(NodeWorker):
 			if len(extralists) != 0:
 				for extra in extralists:
 					trans = dict()
-#					print("'''''''''''''")
 					trans["minhash"] = self._mode_target_haship[-1]["hash"] if "maxhash" not in pre_trans.keys() else pre_trans["maxhash"]
 					trans["maxhash"] = extra["hash"]
 					trans["logical"] = Logical.AND
@@ -513,11 +608,6 @@ class MySQLWorker(NodeWorker):
 					trans["insert_ip"] = self._mode_target_haship[0]["ip"]
 					if trans["steal_ip"] != trans["insert_ip"]:
 						total_transaction.append(trans)
-#					print(trans["minhash"])
-#					print(trans["maxhash"])
-		
-#		for trans in total_transaction:
-#			print(trans)
 		return total_transaction
 
 	@property
@@ -541,7 +631,7 @@ class MySQLWorker(NodeWorker):
 		trans["steal_data"] = list()
 		trans["steal_fake"] = dict()
 		for ip in ips:
-			query = f"\"{trans['minhash']}\" < {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" >= {self._hash_column}"
+			query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
 			sql = f"SELECT * FROM {self._table} WHERE {query}"
 			print(sql)
 			# Steal Next Host
@@ -592,7 +682,7 @@ class MySQLWorker(NodeWorker):
 						db=self._database,
 						cursorclass=pymysql.cursors.DictCursor
 					)
-					query = f"\"{trans['minhash']}\" < {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" >= {self._hash_column}"
+					query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
 					try:
 						with self._conn.cursor() as cursor:
 							sql = f"DELETE FROM {self._table} WHERE {query}"
@@ -642,7 +732,7 @@ class MySQLWorker(NodeWorker):
 		# So, may duplicate data, delete insert_data from insert_ip
 		if "steal_fake" in trans.keys() or self._require_reshard:
 			for steal_ip in trans["steal_fake"].keys():
-				query = f"\"{trans['minhash']}\" < {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" >= {self._hash_column}"
+				query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
 				try:
 					with self._conn.cursor() as cursor:
 						sql = f"DELETE FROM {self._table} WHERE {query}"
@@ -737,7 +827,7 @@ class MySQLWorker(NodeWorker):
 		print(f'MODE: {self._mode.value} DB: {self._database} TABLE: {self._table} HASH_COLUMN: {self._hash_column}')
 		for trans in self._total_transaction:
 			ipinfo = f'{trans["steal_ip"]}=>{trans["insert_ip"]}'
-			hashinfo = f'(\"{trans["minhash"]}\"~\"{trans["maxhash"]}\")'
+			hashinfo = f'(\"{trans["minhash"]}\"{trans["minex"]}{self._hash_column} {trans["logical"].value} \"{trans["maxhash"]}\"{trans["maxex"]}{self._hash_column})'
 			print("%-33s%s"%(ipinfo,hashinfo))
 		if not choice.trans_ok():
 			print("End program without moving data.")
@@ -814,7 +904,8 @@ class MySQLWorker(NodeWorker):
 
 	# Steal,Insert,Delete
 	def sid(self):
-		self._check_trans()
+		if not self._non_check:
+			self._check_trans()
 		for trans in self._total_transaction:
 			trans["complete"] = False
 		
@@ -836,10 +927,6 @@ class MySQLWorker(NodeWorker):
 					sip_count -= trans["steal_fake"][sip]
 				after_totalcount[trans["steal_ip"]] -= sip_count
 				after_totalcount[trans["insert_ip"]] += trans["steal_len"]
-
-				# DEBUG
-#				if trans is self._total_transaction[-1]:
-#					raise Exception
 
 			except Exception as e:
 				print(e)
@@ -869,12 +956,9 @@ class MySQLWorker(NodeWorker):
 			raise test.ConsistencyUnmatchError("Unmatch total before and after data count.")
 		else:
 			print(f'\rTotal Data Count: {aftertotal}')
-
 		# Notification script for increment node
 		if self._notice is not None:
 			self._notice(*self._notice_args,**self._notice_kwargs)
-#		if update:
-#			self._update_yaml()
 
 	def _update_yaml(self):
 		new_iphashs = copy.deepcopy(self._new_iphashs)
@@ -896,8 +980,32 @@ class MySQLWorker(NodeWorker):
 				vnode["password"] = self._ippass[node["ip"]]
 			vnode_iphashs.append(vnode)
 		return vnode_iphashs
-#		parse.update_yaml(self._yaml_path,vnode_iphashs)
 
 	def work(self):
+		print("exists")
+		for obj in self._exists_haship:
+			print(f'{obj["ip"]}: {obj["hash"]}')
+		print("new")
+		for obj in self._virtual_haship:
+			print(f'{obj["ip"]}: {obj["hash"]}')
+		self._total_transaction = self._diff_cluster()
+
 		self.sid()
+
+		numdata_by_node = dict()
+		numdata_by_node["numdata"] = list()
+		total = 0
+		for ip in self._total_data_count:
+			numdata_by_node["numdata"].append({
+				"ip": ip,
+				"count": self._total_data_count[ip],
+			})
+			total += self._total_data_count[ip]
+		numdata_by_node["total"] = total
+		numdata_by_node["database"] = self._database
+		numdata_by_node["table"] = self._table
+		numdata_by_node["hash_column"] = self._hash_column
+		return numdata_by_node
+
+	def update_cluster(self):
 		return self._update_yaml()
