@@ -3,55 +3,20 @@ database: sharding
 table: user
 hash_column: hash_username
 cluster_yaml: "./cluster.yaml"
-virtual_nodecount: 10
+virtual_nodecount: 1000
 user: root
 password: mysql
 create_counter_yaml: True
 ops:
-#include "../node/NODE1OPS"
-  mode: add
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
 #include "../node/NODE2OPS"
-  mode: add
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE3OPS"
-  mode: add
+  mode: delete
   secret: False
   secret_once: True
   update: True
   ping_interval: 0
   non_check: False
 #include "../node/NODE4OPS"
-  mode: add
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE2OPS"
   mode: delete
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE1OPS"
-  mode: delete
-  secret: False
-  secret_once: True
-  update: True
-  ping_interval: 0
-  non_check: False
-#include "../node/NODE2OPS"
-  mode: add
   secret: False
   secret_once: True
   update: True

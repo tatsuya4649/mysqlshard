@@ -200,14 +200,16 @@ class MySQLWorker(NodeWorker):
 			if not isinstance(node["hash"],list):
 				raise TypeError("this YAML File is invalid in this program.(hash must be list)")
 		
+		for i in self._exists_iphashs:
+			print(i["ip"])
 		if self._mode is NodeMode.ADD:
 			# if target node in yaml format, error
 			if len([x for x in self._exists_iphashs if x["ip"] == self._ip]) != 0:
-				raise ValueError("There are already target node in YAML file. target must be non exists node ip.")
+				raise ValueError(f"There are already target node in YAML file({self._ip}). target must be non exists node ip.")
 		elif self._mode is NodeMode.DELETE:
 			# if no target node in yaml format, error
 			if len([x for x in self._exists_iphashs if x["ip"] == self._ip]) == 0:
-				raise ValueError("There is no target node in YAML file. Because target node is delete from existed node, it must be in YAML file.")
+				raise ValueError(f"There is no target node in YAML file({self._ip}). Because target node is delete from existed node, it must be in YAML file.")
 		
 		target_node_ip = self._ip
 		target_node_hash = con.hash(target_node_ip.encode("utf-8"))
@@ -729,21 +731,23 @@ class MySQLWorker(NodeWorker):
 	):
 		res_list = list()
 		host = trans["insert_ip"]
-		self._conn = pymysql.connect(
-			host=host,
-			port=self._ipport[host],
-			user=self._ipuser[host],
-			password=self._ippass[host],
-			database=self._database,
-			cursorclass=pymysql.cursors.DictCursor
-		)
 		# Get fromgg data from not steal_ip
 		# So, may duplicate data, delete insert_data from insert_ip
 		print(trans["steal_fake"])
 		if "steal_fake" in trans.keys() or self._require_reshard or hasattr(self,"_total_ip_list"):
+			print(self._require_reshard)
 			if self._require_reshard:
-				for node in self._total_ip_list:
-					steal_ip = node["ip"]
+				nodes = copy.deepcopy(self._total_ip_list)
+				nodes.append(self._target_node_dict)
+				for node in nodes:
+					self._conn = pymysql.connect(
+						host=node["ip"],
+						port=self._ipport[host],
+						user=self._ipuser[host],
+						password=self._ippass[host],
+						database=self._database,
+						cursorclass=pymysql.cursors.DictCursor
+					)
 					query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
 					try:
 						with self._conn.cursor() as cursor:
@@ -757,6 +761,14 @@ class MySQLWorker(NodeWorker):
 						time.sleep(wait_printtime)
 			else:
 				for steal_ip in trans["steal_fake"].keys():
+					self._conn = pymysql.connect(
+						host=steal_ip,
+						port=self._ipport[host],
+						user=self._ipuser[host],
+						password=self._ippass[host],
+						database=self._database,
+						cursorclass=pymysql.cursors.DictCursor
+					)
 					query = f"\"{trans['minhash']}\" {trans['minex']} {self._hash_column} {trans['logical'].value} \"{trans['maxhash']}\" {trans['maxex']} {self._hash_column}"
 					try:
 						with self._conn.cursor() as cursor:
@@ -768,6 +780,14 @@ class MySQLWorker(NodeWorker):
 						res_list.append(0)
 						print(e)
 						time.sleep(wait_printtime)
+		self._conn = pymysql.connect(
+			host=host,
+			port=self._ipport[host],
+			user=self._ipuser[host],
+			password=self._ippass[host],
+			database=self._database,
+			cursorclass=pymysql.cursors.DictCursor
+		)
 		complete_list = list()
 		for insert_data in trans["steal_data"]:
 			if insert_data not in complete_list:
@@ -912,12 +932,12 @@ class MySQLWorker(NodeWorker):
 				finally:
 					pass
 		print("Back to be state of before of sharding.")
-		sys.exit(1)
 
-	def _error_selection(self,trans):
-		error_handle = choice.error_handle()
+	def _error_selection(self,trans,after_totalcount):
+		error_handle = choice.error_handle(self._require_reshard)
 		if error_handle == choice.ErrorHandle.REDO:
 			self._redo()
+			sys.exit(1)
 		elif error_handle == choice.ErrorHandle.CANCEL:
 			if choice.really_cancel(trans["steal_ip"],trans["insert_ip"]):
 				sys.exit(1)
@@ -928,9 +948,26 @@ class MySQLWorker(NodeWorker):
 				return 
 			else:
 				self._error_selection(trans)
+		elif error_handle == choice.ErrorHandle.RESHARD:
+			self._require_reshard = True
+			self._sid(trans,after_totalcount)
 		else:
 			raise choice.UnknownErrorHandle
 
+	def _sid(self,trans,after_totalcount):
+				steal_len = self.steal_data(trans)
+				if steal_len == 0:
+					return
+				self.insert_data(trans)
+				self.delete_data(trans)
+				del trans["steal_data"]
+				trans["complete"] = True
+				sip_count = trans["steal_len"]
+				for sip in trans["steal_fake"].keys():
+					after_totalcount[sip] -=  trans["steal_fake"][sip]
+					sip_count -= trans["steal_fake"][sip]
+				after_totalcount[trans["steal_ip"]] -= sip_count
+				after_totalcount[trans["insert_ip"]] += trans["steal_len"]
 
 	# Steal,Insert,Delete
 	def sid(self):
@@ -945,20 +982,7 @@ class MySQLWorker(NodeWorker):
 		for trans in self._total_transaction:
 			try:
 				print(trans)
-				steal_len = self.steal_data(trans)
-				if steal_len == 0:
-					continue
-				self.insert_data(trans)
-				self.delete_data(trans)
-				del trans["steal_data"]
-				trans["complete"] = True
-				sip_count = trans["steal_len"]
-				for sip in trans["steal_fake"].keys():
-					after_totalcount[sip] -=  trans["steal_fake"][sip]
-					sip_count -= trans["steal_fake"][sip]
-				after_totalcount[trans["steal_ip"]] -= sip_count
-				after_totalcount[trans["insert_ip"]] += trans["steal_len"]
-
+				self._sid(trans,after_totalcount)
 			except Exception as e:
 				print(e)
 				print(sys.exc_info())
@@ -967,7 +991,7 @@ class MySQLWorker(NodeWorker):
 				ipinfo = f'\033[31m{trans["steal_ip"]}=>{trans["insert_ip"]}\033[0m'
 				hashinfo = f'\033[31m(\"{trans["minhash"]}\"~\"{trans["maxhash"]}\")\033[0m'
 				print("%-33s%s"%(ipinfo,hashinfo))
-				self._error_selection(trans)
+				self._error_selection(trans,after_totalcount)
 
 		print("Before :")
 		allnodes = copy.deepcopy(self._mode_iphashs)

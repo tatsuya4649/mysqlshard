@@ -1,3 +1,4 @@
+from configparser import Error
 import inquirer
 from enum import Enum
 
@@ -37,16 +38,20 @@ class ErrorHandle(Enum):
 	REDO = "Redo (Recommended)"
 	CANCEL = "Cancel"
 	CONTINUE = "Continue"
+	RESHARD = "Restart with reshard"
 
 class UnknownErrorHandle(ValueError):
 	pass 
 
-def error_handle():
+def error_handle(reshard):
+	choices = [ErrorHandle.REDO.value,ErrorHandle.CANCEL.value,ErrorHandle.CONTINUE.value]
+	if not reshard:
+		choices += ErrorHandle.RESHARD.value
 	questions = [
 		inquirer.List(
 			"error_handle",
 			message=f"What should I do?",
-			choices=[ErrorHandle.REDO.value,ErrorHandle.CANCEL.value,ErrorHandle.CONTINUE.value],
+			choices=choices,
 			carousel=False,
 		)
 	]
@@ -58,6 +63,8 @@ def error_handle():
 		return ErrorHandle.CANCEL
 	elif handle == ErrorHandle.CONTINUE.value:
 		return ErrorHandle.CONTINUE
+	elif handle == ErrorHandle.RESHARD.value:
+		return ErrorHandle.RESHARD
 
 class RedoErrorHandle(Enum):
 	CANCEL = "Cancel"

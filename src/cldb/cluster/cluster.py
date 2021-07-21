@@ -67,7 +67,6 @@ class Cluster:
 		if self._cluster_update:
 			update_cluster_yaml(self._cluster_yaml,update_cluster)
 		self._operate = None
-		sys.exit(1)
 	
 	@_require_worker
 	def _only_update_cluster(self,operate):
