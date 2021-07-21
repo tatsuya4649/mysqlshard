@@ -3,20 +3,7 @@ cluster_yaml: ./cluster.yaml
 create_counter_yaml: true
 database: sharding
 hash_column: hash_username
-ops:
-- ip: 172.26.0.1
-  mode: delete
-  option:
-    ip: 172.26.0.1
-    mode: delete
-    non_check: false
-    ping_interval: 0
-    port: 43306
-    require_reshard: true
-    secret: false
-    secret_once: true
-    update: true
-  port: 43306
+ops: []
 password: mysql
 table: user
 type: mysql
