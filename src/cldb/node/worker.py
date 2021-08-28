@@ -1,5 +1,6 @@
 import argparse
 from unittest import result
+from algo.con import node_has
 from yaml import resolver
 
 from yaml.nodes import Node
@@ -1049,6 +1050,15 @@ class MySQLWorker(NodeWorker):
 				vnode["user"] = self._ipuser[node["ip"]]
 				vnode["password"] = self._ippass[node["ip"]]
 			vnode_iphashs.append(vnode)
+		if self._mode is NodeMode.DELETE:
+			cluster_total_ip = {
+				"ip":self._target_node_dict["ip"],
+				"port":self._target_node_dict["port"],
+				"user":self._target_node_dict["user"],
+				"password":self._target_node_dict["password"],
+			}
+			if cluster_total_ip not in vnode_ips:
+				vnode_ips.append(cluster_total_ip)
 		return vnode_iphashs,vnode_ips
 	
 	def _empty_work(self):
